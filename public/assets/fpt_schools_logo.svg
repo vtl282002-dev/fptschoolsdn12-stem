@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 180" fill="none">
+  <!-- FPT 3 Iconic Shapes - Perfectly Centered at X = 210 -->
+  <g transform="translate(0, 8)">
+    <!-- Blue F Block (Left) -->
+    <g transform="skewX(-16)">
+      <rect x="112" y="16" width="56" height="86" rx="14" fill="#0066B3" />
+      <text
+        x="140"
+        y="78"
+        font-family="'Montserrat', 'Be Vietnam Pro', sans-serif"
+        font-weight="900"
+        font-style="italic"
+        font-size="62"
+        fill="#FFFFFF"
+        text-anchor="middle"
+      >F</text>
+    </g>
+
+    <!-- Orange P Block (Middle, Taller) -->
+    <g transform="skewX(-16)">
+      <rect x="182" y="4" width="56" height="110" rx="14" fill="#F37021" />
+      <text
+        x="210"
+        y="85"
+        font-family="'Montserrat', 'Be Vietnam Pro', sans-serif"
+        font-weight="900"
+        font-style="italic"
+        font-size="62"
+        fill="#FFFFFF"
+        text-anchor="middle"
+      >P</text>
+    </g>
+
+    <!-- Green T Block (Right) -->
+    <g transform="skewX(-16)">
+      <rect x="252" y="16" width="56" height="86" rx="14" fill="#009B49" />
+      <text
+        x="280"
+        y="78"
+        font-family="'Montserrat', 'Be Vietnam Pro', sans-serif"
+        font-weight="900"
+        font-style="italic"
+        font-size="62"
+        fill="#FFFFFF"
+        text-anchor="middle"
+      >T</text>
+    </g>
+
+    <!-- Registered trademark symbol ® below green block -->
+    <circle cx="316" cy="120" r="7" stroke="#0066B3" stroke-width="1.8" fill="none" />
+    <text
+      x="316"
+      y="124"
+      font-family="'Montserrat', sans-serif"
+      font-weight="bold"
+      font-size="9"
+      fill="#0066B3"
+      text-anchor="middle"
+    >R</text>
+  </g>
+
+  <!-- Wordmark: FPT SCHOOLS in authentic orange slab-serif, centered at X = 210 -->
+  <text
+    x="210"
+    y="166"
+    font-family="'Roboto Slab', 'Rockwell', 'Clarendon', serif"
+    font-weight="900"
+    font-size="44"
+    letterSpacing="2"
+    fill="#F37021"
+    text-anchor="middle"
+  >FPT SCHOOLS</text>
+</svg>

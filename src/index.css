@@ -1,0 +1,228 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: "Be Vietnam Pro", "Montserrat", sans-serif;
+  }
+}
+
+/* 3D Space & Perspective */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.perspective-1500 {
+  perspective: 1500px;
+}
+
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+}
+
+/* 3D Button Physics */
+.btn-3d-gold {
+  background: linear-gradient(180deg, #FDE047 0%, #EAB308 50%, #CA8A04 100%);
+  border: 2px solid #FEF08A;
+  box-shadow: 0 6px 0 #854D0E, 0 12px 25px rgba(234, 179, 8, 0.45);
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s ease;
+}
+
+.btn-3d-gold:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 0 #854D0E, 0 16px 30px rgba(234, 179, 8, 0.55);
+}
+
+.btn-3d-gold:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 #854D0E, 0 6px 15px rgba(234, 179, 8, 0.4);
+}
+
+.btn-3d-cyan {
+  background: linear-gradient(180deg, #38BDF8 0%, #0284C7 50%, #0369A1 100%);
+  border: 2px solid #7DD3FC;
+  box-shadow: 0 6px 0 #075985, 0 12px 25px rgba(2, 132, 199, 0.45);
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s ease;
+}
+
+.btn-3d-cyan:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 0 #075985, 0 16px 30px rgba(2, 132, 199, 0.55);
+}
+
+.btn-3d-cyan:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 #075985, 0 6px 15px rgba(2, 132, 199, 0.4);
+}
+
+/* Light Sweep effect for CTA buttons */
+.light-sweep-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.light-sweep-container::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -150%;
+  width: 60%;
+  height: 200%;
+  background: linear-gradient(
+    60deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.6) 50%,
+    transparent 80%
+  );
+  transform: rotate(25deg);
+  animation: lightSweep 4.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes lightSweep {
+  0%, 70% {
+    left: -150%;
+  }
+  100% {
+    left: 200%;
+  }
+}
+
+/* Spring shake for wrong answers / wrong puzzle placement */
+@keyframes springShake {
+  0% { transform: translateX(0); }
+  15% { transform: translateX(-9px) rotate(-1.5deg); }
+  30% { transform: translateX(8px) rotate(1.2deg); }
+  45% { transform: translateX(-6px) rotate(-0.8deg); }
+  60% { transform: translateX(5px) rotate(0.6deg); }
+  75% { transform: translateX(-2px); }
+  100% { transform: translateX(0); }
+}
+
+.animate-spring-shake {
+  animation: springShake 0.55s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+/* Laser Scanner Beam */
+@keyframes laserScan {
+  0% {
+    top: 2%;
+    opacity: 0.2;
+  }
+  15% {
+    opacity: 0.9;
+  }
+  85% {
+    opacity: 0.9;
+  }
+  100% {
+    top: 96%;
+    opacity: 0.2;
+  }
+}
+
+.animate-laser-scan {
+  animation: laserScan 2.4s ease-in-out infinite alternate;
+}
+
+/* Holographic Rotating Rings */
+@keyframes rotateCw {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes rotateCcw {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+.animate-rotate-cw {
+  animation: rotateCw 20s linear infinite;
+}
+
+.animate-rotate-ccw {
+  animation: rotateCcw 14s linear infinite;
+}
+
+/* Glow effects */
+.glow-cyan {
+  box-shadow: 0 0 25px -3px rgba(6, 182, 212, 0.5), 0 0 10px -1px rgba(6, 182, 212, 0.4);
+}
+
+.glow-amber {
+  box-shadow: 0 0 28px 2px rgba(245, 158, 11, 0.5), 0 0 12px 0px rgba(245, 158, 11, 0.35);
+}
+
+.glow-emerald {
+  box-shadow: 0 0 28px 2px rgba(16, 185, 129, 0.55), 0 0 12px 0px rgba(16, 185, 129, 0.35);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(56, 189, 248, 0.3);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(56, 189, 248, 0.6);
+}
+
+/* 3D Hero Title Animations */
+@keyframes gentleTitleFloat {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-3.5px);
+  }
+}
+
+@keyframes titleEntranceLine1 {
+  0% {
+    opacity: 0;
+    transform: scale(0.85) translateZ(-80px) rotateX(-8deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateZ(0px) rotateX(0deg);
+  }
+}
+
+@keyframes titleEntranceLine2 {
+  0% {
+    opacity: 0;
+    transform: scale(0.85) translateZ(-80px) rotateX(-8deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateZ(0px) rotateX(0deg);
+  }
+}
+
+@keyframes lightSweepTitle {
+  0%, 68% {
+    transform: translateX(-160%);
+  }
+  100% {
+    transform: translateX(180%);
+  }
+}
+
+@keyframes jigsawPulse {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-4px) scale(1.03);
+  }
+}
+

@@ -1,0 +1,269 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" width="1200" height="800">
+  <defs>
+    <!-- Drop Shadow Filter for Comic Elements -->
+    <filter id="comicShadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="8" dy="10" stdDeviation="0" flood-color="#111827" flood-opacity="1" />
+    </filter>
+    <filter id="subtleGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Crisp White Background -->
+  <rect width="1200" height="800" fill="#FFFFFF" />
+
+  <!-- Subtle STEM Grid Dot Matrix in Background -->
+  <pattern id="dotGrid" x="0" y="0" width="30" height="30" patternUnits="userSpaceOnUse">
+    <circle cx="2" cy="2" r="1.5" fill="#E2E8F0" />
+  </pattern>
+  <rect width="1200" height="800" fill="url(#dotGrid)" />
+
+  <!-- ==================== TOP STEM LETTERS ==================== -->
+  <g transform="translate(0, -10)">
+    
+    <!-- LETTER S (Orange-Red: #F15A24) -->
+    <g transform="translate(140, 90)">
+      <!-- Black 3D extrusion / block shadow -->
+      <path d="M 120 18 C 170 18 190 45 190 85 L 145 92 C 145 68 135 55 110 55 C 85 55 75 68 75 85 C 75 140 195 125 195 210 C 195 270 155 295 100 295 C 45 295 18 265 15 215 L 60 208 C 62 240 80 258 105 258 C 135 258 145 240 145 220 C 145 165 25 180 25 95 C 25 35 68 18 120 18 Z"
+            fill="#111827" transform="translate(10, 12)" />
+      <!-- Main S body -->
+      <path d="M 120 18 C 170 18 190 45 190 85 L 145 92 C 145 68 135 55 110 55 C 85 55 75 68 75 85 C 75 140 195 125 195 210 C 195 270 155 295 100 295 C 45 295 18 265 15 215 L 60 208 C 62 240 80 258 105 258 C 135 258 145 240 145 220 C 145 165 25 180 25 95 C 25 35 68 18 120 18 Z"
+            fill="#F15A24" stroke="#111827" stroke-width="7" stroke-linejoin="round" />
+      <!-- White Atom inside S lower belly -->
+      <g transform="translate(105, 220)">
+        <ellipse rx="26" ry="10" fill="none" stroke="#FFFFFF" stroke-width="3" transform="rotate(-30)" />
+        <ellipse rx="26" ry="10" fill="none" stroke="#FFFFFF" stroke-width="3" transform="rotate(30)" />
+        <ellipse rx="26" ry="10" fill="none" stroke="#FFFFFF" stroke-width="3" transform="rotate(90)" />
+        <circle r="5" fill="#FFFFFF" />
+      </g>
+    </g>
+
+    <!-- DOT 1 (Orange-Red •) -->
+    <g transform="translate(365, 270)">
+      <circle cx="6" cy="7" r="14" fill="#111827" />
+      <circle cx="0" cy="0" r="14" fill="#F15A24" stroke="#111827" stroke-width="5" />
+    </g>
+
+    <!-- LETTER T (Vibrant Green: #39B54A) -->
+    <g transform="translate(415, 90)">
+      <!-- Black 3D shadow -->
+      <path d="M 15 22 L 185 22 L 185 70 L 125 70 L 125 290 L 75 290 L 75 70 L 15 70 Z"
+            fill="#111827" transform="translate(10, 12)" />
+      <!-- Main T body -->
+      <path d="M 15 22 L 185 22 L 185 70 L 125 70 L 125 290 L 75 290 L 75 70 L 15 70 Z"
+            fill="#39B54A" stroke="#111827" stroke-width="7" stroke-linejoin="round" />
+      <!-- White Computer Cursor Arrow on stem of T -->
+      <g transform="translate(100, 160)">
+        <path d="M -12 40 L -12 -25 L 18 5 L 4 6 L 14 26 L 3 31 L -7 11 Z"
+              fill="#FFFFFF" stroke="#111827" stroke-width="3" stroke-linejoin="round" />
+      </g>
+    </g>
+
+    <!-- DOT 2 (Green •) -->
+    <g transform="translate(630, 270)">
+      <circle cx="6" cy="7" r="14" fill="#111827" />
+      <circle cx="0" cy="0" r="14" fill="#39B54A" stroke="#111827" stroke-width="5" />
+    </g>
+
+    <!-- LETTER E (Royal Blue: #1C75BC) -->
+    <g transform="translate(680, 90)">
+      <!-- Black 3D shadow -->
+      <path d="M 25 22 L 175 22 L 175 70 L 80 70 L 80 130 L 160 130 L 160 175 L 80 175 L 80 242 L 178 242 L 178 290 L 25 290 Z"
+            fill="#111827" transform="translate(10, 12)" />
+      <!-- Main E body -->
+      <path d="M 25 22 L 175 22 L 175 70 L 80 70 L 80 130 L 160 130 L 160 175 L 80 175 L 80 242 L 178 242 L 178 290 L 25 290 Z"
+            fill="#1C75BC" stroke="#111827" stroke-width="7" stroke-linejoin="round" />
+      <!-- White Cog/Gear on left spine of E -->
+      <g transform="translate(48, 205)">
+        <circle r="16" fill="#FFFFFF" stroke="#111827" stroke-width="2.5" />
+        <circle r="7" fill="#1C75BC" />
+        <!-- Cog teeth -->
+        <rect x="-3" y="-21" width="6" height="5" fill="#FFFFFF" />
+        <rect x="-3" y="16" width="6" height="5" fill="#FFFFFF" />
+        <rect x="-21" y="-3" width="5" height="6" fill="#FFFFFF" />
+        <rect x="16" y="-3" width="5" height="6" fill="#FFFFFF" />
+        <rect x="-15" y="-15" width="6" height="6" fill="#FFFFFF" transform="rotate(45)" />
+        <rect x="9" y="9" width="6" height="6" fill="#FFFFFF" transform="rotate(45)" />
+      </g>
+    </g>
+
+    <!-- DOT 3 (Blue •) -->
+    <g transform="translate(895, 270)">
+      <circle cx="6" cy="7" r="14" fill="#111827" />
+      <circle cx="0" cy="0" r="14" fill="#1C75BC" stroke="#111827" stroke-width="5" />
+    </g>
+
+    <!-- LETTER M (Golden Yellow: #FFC72C) -->
+    <g transform="translate(940, 90)">
+      <!-- Black 3D shadow -->
+      <path d="M 15 22 L 68 22 L 110 145 L 152 22 L 205 22 L 205 290 L 158 290 L 158 115 L 125 210 L 95 210 L 62 115 L 62 290 L 15 290 Z"
+            fill="#111827" transform="translate(10, 12)" />
+      <!-- Main M body -->
+      <path d="M 15 22 L 68 22 L 110 145 L 152 22 L 205 22 L 205 290 L 158 290 L 158 115 L 125 210 L 95 210 L 62 115 L 62 290 L 15 290 Z"
+            fill="#FFC72C" stroke="#111827" stroke-width="7" stroke-linejoin="round" />
+      <!-- Ruler tick markings on left column of M -->
+      <g stroke="#111827" stroke-width="3">
+        <line x1="18" y1="50" x2="35" y2="50" />
+        <line x1="18" y1="70" x2="28" y2="70" />
+        <line x1="18" y1="90" x2="35" y2="90" />
+        <line x1="18" y1="110" x2="28" y2="110" />
+        <line x1="18" y1="130" x2="35" y2="130" />
+        <line x1="18" y1="150" x2="28" y2="150" />
+        <line x1="18" y1="170" x2="35" y2="170" />
+        <line x1="18" y1="190" x2="28" y2="190" />
+        <line x1="18" y1="210" x2="35" y2="210" />
+        <line x1="18" y1="230" x2="28" y2="230" />
+        <line x1="18" y1="250" x2="35" y2="250" />
+        <line x1="18" y1="270" x2="28" y2="270" />
+      </g>
+    </g>
+  </g>
+
+  <!-- ==================== 4 CIRCULAR STEM BADGES ==================== -->
+  
+  <!-- 1. SCIENCE BADGE -->
+  <g transform="translate(190, 560)">
+    <!-- Drop Shadow -->
+    <circle cx="9" cy="11" r="95" fill="#111827" />
+    <!-- White outer rim -->
+    <circle cx="0" cy="0" r="95" fill="#FFFFFF" stroke="#111827" stroke-width="7" />
+    <!-- Orange-Red Inner circle -->
+    <circle cx="0" cy="0" r="82" fill="#F15A24" />
+    
+    <!-- Science Flask / Beaker Icon -->
+    <g transform="translate(0, -10)">
+      <!-- Bubbles -->
+      <circle cx="-6" cy="-45" r="4" fill="#FFFFFF" opacity="0.9" />
+      <circle cx="10" cy="-38" r="6" fill="#FFFFFF" opacity="0.9" />
+      <!-- Glass Conical Flask -->
+      <path d="M -14 -32 L 14 -32 L 14 -12 L 40 40 C 44 48 38 56 28 56 L -28 56 C -38 56 -44 48 -40 40 L -14 -12 Z"
+            fill="#FFFFFF" stroke="#111827" stroke-width="5" stroke-linejoin="round" />
+      <!-- Liquid in Flask -->
+      <path d="M -30 30 C -15 35 15 25 30 30 L 37 42 C 40 48 35 52 28 52 L -28 52 C -35 52 -40 48 -37 42 Z"
+            fill="#A855F7" stroke="#111827" stroke-width="3" />
+      <!-- Measurement Lines on Flask -->
+      <line x1="-12" y1="8" x2="0" y2="8" stroke="#111827" stroke-width="2.5" />
+      <line x1="-16" y1="20" x2="-2" y2="20" stroke="#111827" stroke-width="2.5" />
+      <line x1="-22" y1="32" x2="-8" y2="32" stroke="#111827" stroke-width="2.5" />
+    </g>
+
+    <!-- SCIENCE Label -->
+    <text x="0" y="130" text-anchor="middle" font-family="'Arial Black', Impact, sans-serif" font-weight="900" font-size="24" fill="#F15A24" stroke="#111827" stroke-width="1.5" letter-spacing="2">
+      SCIENCE
+    </text>
+  </g>
+
+  <!-- 2. TECHNOLOGY BADGE -->
+  <g transform="translate(460, 560)">
+    <!-- Drop Shadow -->
+    <circle cx="9" cy="11" r="95" fill="#111827" />
+    <!-- White outer rim -->
+    <circle cx="0" cy="0" r="95" fill="#FFFFFF" stroke="#111827" stroke-width="7" />
+    <!-- Green Inner circle -->
+    <circle cx="0" cy="0" r="82" fill="#39B54A" />
+
+    <!-- Satellite Dish Antenna Icon -->
+    <g transform="translate(-10, -5)">
+      <!-- Stand / Tripod -->
+      <path d="M -15 45 L 20 45 L 5 20 Z" fill="#E2E8F0" stroke="#111827" stroke-width="4" stroke-linejoin="round" />
+      <!-- Dish Body (curved 3D parabola) -->
+      <ellipse cx="0" cy="5" rx="36" ry="22" fill="#FFFFFF" stroke="#111827" stroke-width="5" transform="rotate(-35)" />
+      <!-- Receiver Feed horn -->
+      <line x1="-10" y1="12" x2="22" y2="-18" stroke="#111827" stroke-width="5" />
+      <circle cx="24" cy="-20" r="6" fill="#E2E8F0" stroke="#111827" stroke-width="3" />
+      <!-- Radio Signal Wave Arcs -->
+      <path d="M 28 -34 A 18 18 0 0 1 45 -18" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" />
+      <path d="M 38 -45 A 32 32 0 0 1 60 -22" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" />
+    </g>
+
+    <!-- TECHNOLOGY Label -->
+    <text x="0" y="130" text-anchor="middle" font-family="'Arial Black', Impact, sans-serif" font-weight="900" font-size="22" fill="#39B54A" stroke="#111827" stroke-width="1.5" letter-spacing="1">
+      TECHNOLOGY
+    </text>
+  </g>
+
+  <!-- 3. ENGINEERING BADGE -->
+  <g transform="translate(735, 560)">
+    <!-- Drop Shadow -->
+    <circle cx="9" cy="11" r="95" fill="#111827" />
+    <!-- White outer rim -->
+    <circle cx="0" cy="0" r="95" fill="#FFFFFF" stroke="#111827" stroke-width="7" />
+    <!-- Blue Inner circle -->
+    <circle cx="0" cy="0" r="82" fill="#1C75BC" />
+
+    <!-- Interlocking Gears (3 white gears) -->
+    <g transform="translate(0, -5)">
+      <!-- Large Gear Left -->
+      <g transform="translate(-18, -10)">
+        <circle r="26" fill="#FFFFFF" stroke="#111827" stroke-width="4" />
+        <circle r="10" fill="#1C75BC" stroke="#111827" stroke-width="3" />
+        <!-- Teeth -->
+        <rect x="-4" y="-32" width="8" height="7" fill="#FFFFFF" stroke="#111827" stroke-width="2" />
+        <rect x="-4" y="25" width="8" height="7" fill="#FFFFFF" stroke="#111827" stroke-width="2" />
+        <rect x="-32" y="-4" width="7" height="8" fill="#FFFFFF" stroke="#111827" stroke-width="2" />
+        <rect x="25" y="-4" width="7" height="8" fill="#FFFFFF" stroke="#111827" stroke-width="2" />
+      </g>
+      <!-- Medium Gear Right -->
+      <g transform="translate(24, 8)">
+        <circle r="20" fill="#E2E8F0" stroke="#111827" stroke-width="4" />
+        <circle r="8" fill="#1C75BC" stroke="#111827" stroke-width="3" />
+        <!-- Teeth -->
+        <rect x="-3" y="-25" width="6" height="6" fill="#E2E8F0" stroke="#111827" stroke-width="2" />
+        <rect x="-3" y="19" width="6" height="6" fill="#E2E8F0" stroke="#111827" stroke-width="2" />
+        <rect x="-25" y="-3" width="6" height="6" fill="#E2E8F0" stroke="#111827" stroke-width="2" />
+        <rect x="19" y="-3" width="6" height="6" fill="#E2E8F0" stroke="#111827" stroke-width="2" />
+      </g>
+      <!-- Small Top Gear -->
+      <g transform="translate(14, -28)">
+        <circle r="14" fill="#FFFFFF" stroke="#111827" stroke-width="3" />
+        <circle r="5" fill="#1C75BC" />
+      </g>
+    </g>
+
+    <!-- ENGINEERING Label -->
+    <text x="0" y="130" text-anchor="middle" font-family="'Arial Black', Impact, sans-serif" font-weight="900" font-size="22" fill="#1C75BC" stroke="#111827" stroke-width="1.5" letter-spacing="1">
+      ENGINEERING
+    </text>
+  </g>
+
+  <!-- 4. MATHEMATICS BADGE -->
+  <g transform="translate(1005, 560)">
+    <!-- Drop Shadow -->
+    <circle cx="9" cy="11" r="95" fill="#111827" />
+    <!-- White outer rim -->
+    <circle cx="0" cy="0" r="95" fill="#FFFFFF" stroke="#111827" stroke-width="7" />
+    <!-- Yellow Inner circle -->
+    <circle cx="0" cy="0" r="82" fill="#FFC72C" />
+
+    <!-- Digital Pocket Calculator Icon -->
+    <g transform="translate(0, -8)">
+      <!-- Calculator Body -->
+      <rect x="-32" y="-42" width="64" height="84" rx="8" fill="#FFFFFF" stroke="#111827" stroke-width="5" />
+      <!-- LCD Screen -->
+      <rect x="-24" y="-34" width="48" height="22" rx="3" fill="#6EE7B7" stroke="#111827" stroke-width="3" />
+      <text x="18" y="-18" text-anchor="end" font-family="'Courier New', monospace" font-weight="bold" font-size="14" fill="#065F46">3.1415</text>
+      <!-- Keypad Buttons Grid -->
+      <g transform="translate(-22, -4)">
+        <!-- Row 1 -->
+        <rect x="0" y="0" width="10" height="9" rx="2" fill="#111827" />
+        <rect x="17" y="0" width="10" height="9" rx="2" fill="#111827" />
+        <rect x="34" y="0" width="10" height="9" rx="2" fill="#EF4444" />
+        <!-- Row 2 -->
+        <rect x="0" y="14" width="10" height="9" rx="2" fill="#111827" />
+        <rect x="17" y="14" width="10" height="9" rx="2" fill="#111827" />
+        <rect x="34" y="14" width="10" height="9" rx="2" fill="#3B82F6" />
+        <!-- Row 3 -->
+        <rect x="0" y="28" width="10" height="9" rx="2" fill="#111827" />
+        <rect x="17" y="28" width="10" height="9" rx="2" fill="#111827" />
+        <rect x="34" y="28" width="10" height="9" rx="2" fill="#10B981" />
+      </g>
+    </g>
+
+    <!-- MATHEMATICS Label -->
+    <text x="0" y="130" text-anchor="middle" font-family="'Arial Black', Impact, sans-serif" font-weight="900" font-size="21" fill="#D97706" stroke="#111827" stroke-width="1.5" letter-spacing="1">
+      MATHEMATICS
+    </text>
+  </g>
+
+</svg>

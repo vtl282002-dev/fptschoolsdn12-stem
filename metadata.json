@@ -1,0 +1,10 @@
+{
+  "name": "Remix Thử thách khuôn mặt - Ghép tranh bí ẩn",
+  "description": "Trò chơi tương tác STEM nhận diện khuôn mặt và ghép tranh 3x3 bí ẩn với câu hỏi trắc nghiệm kiến thức",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
