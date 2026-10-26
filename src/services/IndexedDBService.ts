@@ -84,6 +84,14 @@ class IndexedDBService {
         ...scores,
         ...customScoresBackup
       };
+      // Enforce 50 points for mouth_pucker as requested
+      if (!merged.mouth_pucker || merged.mouth_pucker === 100 || merged.mouth_pucker > 50) {
+        merged.mouth_pucker = 50;
+      }
+      // Enforce 50 points for cheek_puff as requested
+      if (!merged.cheek_puff || merged.cheek_puff === 70 || merged.cheek_puff > 50) {
+        merged.cheek_puff = 50;
+      }
       // Enforce 20 points for wink_left and wink_right as requested
       if (!merged.wink_left || merged.wink_left === 80 || merged.wink_left > 20) {
         merged.wink_left = 20;

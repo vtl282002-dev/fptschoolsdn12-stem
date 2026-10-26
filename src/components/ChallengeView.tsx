@@ -42,6 +42,11 @@ interface ChallengeViewProps {
   onResetGame?: () => void;
 }
 
+const isMobileDevice = () => {
+  if (typeof window === 'undefined') return false;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || window.innerWidth < 768;
+};
+
 export const ChallengeView: React.FC<ChallengeViewProps> = ({
   challengeType,
   challengeTurnNonce,
@@ -82,6 +87,10 @@ export const ChallengeView: React.FC<ChallengeViewProps> = ({
   const lastInferenceTimeRef = useRef<number>(0);
   const isComponentMounted = useRef<boolean>(true);
   const hasTriggeredSuccess = useRef<boolean>(false);
+  const lastValidationTextRef = useRef<string>('');
+  const lastRenderedScoreRef = useRef<number>(0);
+  const lastScoreUpdateTimeRef = useRef<number>(0);
+  const isMobileRef = useRef<boolean>(isMobileDevice());
 
   const challengeInfo = CHALLENGE_DEFINITIONS[challengeType] || {
     id: challengeType,
@@ -127,22 +136,30 @@ export const ChallengeView: React.FC<ChallengeViewProps> = ({
         console.warn('FaceLandmarker load fallback:', err);
       });
 
+      const isMobile = isMobileDevice();
+      isMobileRef.current = isMobile;
+
       let stream: MediaStream;
       try {
-        // Preferred high quality user camera
+        // Preferred user camera, constrained to prevent mobile cameras from streaming in 1080p/4K
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: 'user',
-            width: { ideal: 640 },
-            height: { ideal: 480 }
+            width: { ideal: isMobile ? 480 : 640, max: isMobile ? 640 : 1280 },
+            height: { ideal: isMobile ? 360 : 480, max: isMobile ? 480 : 720 },
+            frameRate: { ideal: isMobile ? 24 : 30, max: 30 }
           },
           audio: false
         });
       } catch {
         try {
-          // Fallback with just facingMode
+          // Fallback with just facingMode & lightweight resolution
           stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user' },
+            video: {
+              facingMode: 'user',
+              width: { ideal: isMobile ? 480 : 640 },
+              height: { ideal: isMobile ? 360 : 480 }
+            },
             audio: false
           });
         } catch {
@@ -233,6 +250,9 @@ export const ChallengeView: React.FC<ChallengeViewProps> = ({
     setPhase('idle');
     setCountdownNum(null);
     hasTriggeredSuccess.current = false;
+    lastValidationTextRef.current = '';
+    lastRenderedScoreRef.current = 0;
+    lastScoreUpdateTimeRef.current = 0;
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
       countdownIntervalRef.current = null;
@@ -245,6 +265,9 @@ export const ChallengeView: React.FC<ChallengeViewProps> = ({
     ChallengeEvaluator.reset();
     setCurrentScore(0);
     hasTriggeredSuccess.current = false;
+    lastValidationTextRef.current = '';
+    lastRenderedScoreRef.current = 0;
+    lastScoreUpdateTimeRef.current = 0;
 
     // Clear any active countdown timer
     if (countdownIntervalRef.current) {
@@ -316,11 +339,19 @@ export const ChallengeView: React.FC<ChallengeViewProps> = ({
     setPhase('idle');
     setCountdownNum(null);
     hasTriggeredSuccess.current = false;
+    lastValidationTextRef.current = '';
+    lastRenderedScoreRef.current = 0;
+    lastScoreUpdateTimeRef.current = 0;
   };
 
-  // 3. Real Camera Face Detection Loop
+  // 3. Real Camera Face Detection Loop (Optimized for Mobile)
   useEffect(() => {
     if (cameraState !== 'ready' || isSimulatedCamera) return;
+
+    const isMobile = isMobileRef.current;
+    // On mobile devices, 62ms (~16 FPS) provides real-time responsiveness while giving the browser
+    // ample idle time to render at 60 FPS without GPU backlog or thermal stutter.
+    const minInterval = isMobile ? 62 : 38;
 
     const processFrame = (time: number) => {
       if (!isComponentMounted.current) return;
@@ -328,7 +359,7 @@ export const ChallengeView: React.FC<ChallengeViewProps> = ({
       const video = videoRef.current;
       const canvas = canvasRef.current;
 
-      if (video && canvas && video.readyState >= 2 && time - lastInferenceTimeRef.current >= 40) {
+      if (video && canvas && video.readyState >= 2 && time - lastInferenceTimeRef.current >= minInterval) {
         lastInferenceTimeRef.current = time;
 
         const data = faceLandmarkerService.detectFace(video, time);
@@ -338,7 +369,11 @@ export const ChallengeView: React.FC<ChallengeViewProps> = ({
           ctx.clearRect(0, 0, canvas.width, canvas.height);
 
           if (data && data.landmarks && data.landmarks.length > 0) {
-            setValidationText(data.validation.message || 'Khuôn mặt hợp lệ');
+            const nextValText = data.validation.message || 'Khuôn mặt hợp lệ';
+            if (nextValText !== lastValidationTextRef.current) {
+              lastValidationTextRef.current = nextValText;
+              setValidationText(nextValText);
+            }
 
             // Draw bounding box with corner L-brackets
             let minX = 1, minY = 1, maxX = 0, maxY = 0;
@@ -369,9 +404,14 @@ export const ChallengeView: React.FC<ChallengeViewProps> = ({
             const cornerSize = Math.min(28, boxW * 0.22);
 
             ctx.strokeStyle = '#00F0FF';
-            ctx.lineWidth = 3;
-            ctx.shadowColor = '#00F0FF';
-            ctx.shadowBlur = 10;
+            ctx.lineWidth = 2.5;
+            // Disable expensive canvas shadow blur on mobile devices for smooth 60fps compositing
+            if (!isMobile) {
+              ctx.shadowColor = '#00F0FF';
+              ctx.shadowBlur = 8;
+            } else {
+              ctx.shadowBlur = 0;
+            }
 
             // Top Left Corner
             ctx.beginPath();
@@ -403,7 +443,11 @@ export const ChallengeView: React.FC<ChallengeViewProps> = ({
 
             // Draw Landmark Grid Mesh Dots
             ctx.fillStyle = 'rgba(0, 240, 255, 0.75)';
-            ctx.shadowBlur = 6;
+            if (!isMobile) {
+              ctx.shadowBlur = 4;
+            } else {
+              ctx.shadowBlur = 0;
+            }
             const keyIndices = [
               1, 33, 263, 61, 291, 13, 14, 17, 37, 267, 10, 152, 234, 454,
               107, 336, 168, 197, 5, 4, 19, 94, 2
@@ -429,12 +473,25 @@ export const ChallengeView: React.FC<ChallengeViewProps> = ({
               );
               const score = Math.min(100, Math.round(evalResult.score));
 
-              setCurrentScore(score);
-              setHighScore((prev) => Math.max(prev, score));
+              // Throttle React state updates to avoid continuous component reconciliations on mobile
+              const shouldUpdate =
+                score >= requiredScore ||
+                score === 0 ||
+                time - lastScoreUpdateTimeRef.current >= (isMobile ? 80 : 50) ||
+                Math.abs(score - lastRenderedScoreRef.current) >= 3;
+
+              if (shouldUpdate && score !== lastRenderedScoreRef.current) {
+                lastRenderedScoreRef.current = score;
+                lastScoreUpdateTimeRef.current = time;
+                setCurrentScore(score);
+                setHighScore((prev) => Math.max(prev, score));
+              }
 
               // Check if passed requiredScore
               if (score >= requiredScore && !hasTriggeredSuccess.current) {
                 hasTriggeredSuccess.current = true;
+                setCurrentScore(score);
+                setHighScore((prev) => Math.max(prev, score));
                 setPhase('success');
                 audioManager.playScoreTargetReached();
 
@@ -446,8 +503,13 @@ export const ChallengeView: React.FC<ChallengeViewProps> = ({
               }
             }
           } else {
-            setValidationText('Hãy đưa khuôn mặt vào giữa khung camera');
-            if (phase === 'active') {
+            const noFaceMsg = 'Hãy đưa khuôn mặt vào giữa khung camera';
+            if (noFaceMsg !== lastValidationTextRef.current) {
+              lastValidationTextRef.current = noFaceMsg;
+              setValidationText(noFaceMsg);
+            }
+            if (phase === 'active' && time - lastScoreUpdateTimeRef.current >= 120) {
+              lastScoreUpdateTimeRef.current = time;
               setCurrentScore((prev) => Math.max(0, prev - 1));
             }
           }
@@ -845,7 +907,7 @@ export const ChallengeView: React.FC<ChallengeViewProps> = ({
         {/* ================= LEFT MAIN CONTAINER: CAMERA SCANNER (58% desktop width) ================= */}
         <div className="w-full lg:w-[58%] max-w-[620px] flex flex-col items-center shrink-0">
           {/* Cyber Neon Rounded Camera Card matching Image 1 */}
-          <div className="relative w-full max-w-[580px] aspect-[4/3] max-h-[calc(100vh-175px)] sm:max-h-[440px] 2xl:max-h-[500px] rounded-3xl p-2 bg-gradient-to-b from-cyan-500/30 via-blue-600/15 to-cyan-500/25 border-2 border-cyan-400 shadow-[0_0_35px_rgba(6,182,212,0.4)]">
+          <div className="relative w-full max-w-[580px] aspect-[4/3] max-h-[calc(100vh-175px)] sm:max-h-[440px] 2xl:max-h-[500px] rounded-3xl p-2 bg-gradient-to-b from-cyan-500/30 via-blue-600/15 to-cyan-500/25 border-2 border-cyan-400 shadow-[0_0_35px_rgba(6,182,212,0.4)] transform-gpu">
             <div className="relative w-full h-full rounded-[20px] overflow-hidden bg-slate-950 flex items-center justify-center">
               {/* Corner Cyber Accents */}
               <div className="absolute top-2 left-2 w-5 h-5 border-t-3 border-l-3 border-cyan-400/90 z-20 pointer-events-none rounded-tl-sm" />
@@ -869,8 +931,8 @@ export const ChallengeView: React.FC<ChallengeViewProps> = ({
               {!isSimulatedCamera && (
                 <canvas
                   ref={canvasRef}
-                  width={640}
-                  height={480}
+                  width={isMobileDevice() ? 480 : 640}
+                  height={isMobileDevice() ? 360 : 480}
                   className="absolute inset-0 w-full h-full pointer-events-none z-10"
                 />
               )}
@@ -879,8 +941,8 @@ export const ChallengeView: React.FC<ChallengeViewProps> = ({
               {isSimulatedCamera && (
                 <canvas
                   ref={simCanvasRef}
-                  width={640}
-                  height={480}
+                  width={isMobileDevice() ? 480 : 640}
+                  height={isMobileDevice() ? 360 : 480}
                   className="absolute inset-0 w-full h-full object-cover"
                 />
               )}

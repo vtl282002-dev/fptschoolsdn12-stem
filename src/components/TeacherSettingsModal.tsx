@@ -100,7 +100,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
       ...prev,
       requiredScores: {
         ...prev.requiredScores,
-        mouth_pucker: 100,
+        mouth_pucker: 50,
         smile: 50,
         grin: 40,
         wink_left: 20,
@@ -110,7 +110,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
         mouth_stretch: 75,
         head_shake: 65,
         head_nod: 65,
-        cheek_puff: 70,
+        cheek_puff: 50,
         brow_raise: 65
       }
     }));

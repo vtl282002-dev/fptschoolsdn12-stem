@@ -20,10 +20,16 @@ class FaceLandmarkerService {
   private initPromise: Promise<FaceLandmarker | null> | null = null;
   private offscreenCanvas: HTMLCanvasElement | null = null;
   private offscreenCtx: CanvasRenderingContext2D | null = null;
+  private cachedBrightness = 100;
+  private lastBrightnessCheck = 0;
 
   public async initialize(): Promise<FaceLandmarker | null> {
     if (this.landmarker) return this.landmarker;
     if (this.initPromise) return this.initPromise;
+
+    const isMobile =
+      typeof window !== 'undefined' &&
+      (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || window.innerWidth < 768);
 
     this.isInitializing = true;
     this.initPromise = (async () => {
@@ -40,7 +46,7 @@ class FaceLandmarkerService {
           },
           outputFaceBlendshapes: true,
           runningMode: 'VIDEO',
-          numFaces: 2 // Detect up to 2 faces so we can warn if > 1 person is in front of camera
+          numFaces: isMobile ? 1 : 2 // 1 face on mobile for maximum fps & minimal thermal load
         });
 
         return this.landmarker;
@@ -58,7 +64,7 @@ class FaceLandmarkerService {
             },
             outputFaceBlendshapes: true,
             runningMode: 'VIDEO',
-            numFaces: 2
+            numFaces: isMobile ? 1 : 2
           });
           return this.landmarker;
         } catch (cpuErr) {
@@ -139,8 +145,8 @@ class FaceLandmarkerService {
       // Center check (within 25% of center frame: 0.25 to 0.75)
       const isCentered = faceCenterX >= 0.22 && faceCenterX <= 0.78 && faceCenterY >= 0.20 && faceCenterY <= 0.80;
 
-      // Brightness check
-      const brightness = this.estimateBrightness(video, minX, minY, faceWidth, faceHeight);
+      // Brightness check (throttled to avoid GPU pipeline readback stalls)
+      const brightness = this.estimateBrightness(video, minX, minY, faceWidth, faceHeight, timestampMs);
 
       // Check validations
       let isValid = true;
@@ -196,27 +202,34 @@ class FaceLandmarkerService {
     faceX: number,
     faceY: number,
     faceW: number,
-    faceH: number
+    faceH: number,
+    timestampMs: number
   ): number {
+    // Only sample brightness once every 800ms to eliminate GPU texture readback stalls
+    if (timestampMs - this.lastBrightnessCheck < 800) {
+      return this.cachedBrightness;
+    }
+    this.lastBrightnessCheck = timestampMs;
+
     try {
       if (!this.offscreenCanvas) {
         this.offscreenCanvas = document.createElement('canvas');
-        this.offscreenCanvas.width = 32;
-        this.offscreenCanvas.height = 32;
+        this.offscreenCanvas.width = 16;
+        this.offscreenCanvas.height = 16;
         this.offscreenCtx = this.offscreenCanvas.getContext('2d', { willReadFrequently: true });
       }
 
-      if (!this.offscreenCtx) return 100;
+      if (!this.offscreenCtx) return this.cachedBrightness;
 
       const sx = Math.max(0, Math.floor(faceX * video.videoWidth));
       const sy = Math.max(0, Math.floor(faceY * video.videoHeight));
       const sw = Math.min(video.videoWidth - sx, Math.floor(faceW * video.videoWidth));
       const sh = Math.min(video.videoHeight - sy, Math.floor(faceH * video.videoHeight));
 
-      if (sw <= 0 || sh <= 0) return 100;
+      if (sw <= 0 || sh <= 0) return this.cachedBrightness;
 
-      this.offscreenCtx.drawImage(video, sx, sy, sw, sh, 0, 0, 32, 32);
-      const imgData = this.offscreenCtx.getImageData(0, 0, 32, 32);
+      this.offscreenCtx.drawImage(video, sx, sy, sw, sh, 0, 0, 16, 16);
+      const imgData = this.offscreenCtx.getImageData(0, 0, 16, 16);
       const data = imgData.data;
 
       let sumLuma = 0;
@@ -225,9 +238,10 @@ class FaceLandmarkerService {
         sumLuma += 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
       }
 
-      return sumLuma / (data.length / 4);
+      this.cachedBrightness = sumLuma / (data.length / 4);
+      return this.cachedBrightness;
     } catch {
-      return 100;
+      return this.cachedBrightness;
     }
   }
 

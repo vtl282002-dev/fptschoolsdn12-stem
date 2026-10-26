@@ -5,7 +5,7 @@ export const CHALLENGE_DEFINITIONS: Record<ChallengeType, ChallengeInfo> = {
     id: 'mouth_pucker',
     name: 'CHU MÔI',
     instruction: 'Hãy CHU MÔI để giành quyền trả lời câu hỏi!',
-    defaultScore: 100,
+    defaultScore: 50,
     icon: '😗'
   },
   smile: {
@@ -75,7 +75,7 @@ export const CHALLENGE_DEFINITIONS: Record<ChallengeType, ChallengeInfo> = {
     id: 'cheek_puff',
     name: 'PHỒNG MÁ',
     instruction: 'Hãy PHỒNG CĂNG HAI MÁ để ghi điểm!',
-    defaultScore: 70,
+    defaultScore: 50,
     icon: '🐡'
   },
   brow_raise: {

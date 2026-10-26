@@ -28,14 +28,14 @@ export class ExpressionAnalyzer {
     let geoScore = 0;
     if (outerFaceWidth > 0) {
       const ratio = innerCheekWidth / outerFaceWidth;
-      // Normal ratio is around 0.58-0.65; puffed cheeks expand > 0.72
-      if (ratio > 0.68) {
-        geoScore = Math.min(1, (ratio - 0.67) / 0.12) * 100;
+      // Normal ratio is around 0.58-0.64; puffed cheeks expand > 0.66
+      if (ratio > 0.65) {
+        geoScore = Math.min(1, (ratio - 0.64) / 0.11) * 100;
       }
     }
 
     if (blendshapeCheekPuff !== undefined) {
-      const blendScore = Math.min(1, blendshapeCheekPuff / 0.40) * 100;
+      const blendScore = Math.min(1, blendshapeCheekPuff / 0.35) * 100;
       return Math.round(Math.min(100, Math.max(geoScore, blendScore)));
     }
 

@@ -48,16 +48,16 @@ export const Background3D: React.FC<Background3DProps> = ({ reducedMotion = fals
       {/* Atmospheric Overhead Sky & Cyan Light Beams */}
       <div className="absolute inset-0">
         {/* Top Center Radiant Cyan-Blue Glow */}
-        <div className="absolute -top-[15%] left-1/2 -translate-x-1/2 w-[1200px] h-[700px] rounded-full bg-gradient-to-b from-cyan-400/25 via-blue-500/20 to-transparent blur-[110px]" />
+        <div className="absolute -top-[15%] left-1/2 -translate-x-1/2 w-[1200px] h-[700px] rounded-full bg-gradient-to-b from-cyan-400/25 via-blue-500/20 to-transparent blur-2xl sm:blur-[110px]" />
         
         {/* Left Electric Cyan Light Aura */}
-        <div className="absolute top-[20%] -left-[10%] w-[650px] h-[650px] rounded-full bg-cyan-400/20 blur-[130px]" />
+        <div className="absolute top-[20%] -left-[10%] w-[650px] h-[650px] rounded-full bg-cyan-400/20 blur-2xl sm:blur-[130px]" />
 
         {/* Right Electric Blue Light Aura */}
-        <div className="absolute top-[20%] -right-[10%] w-[650px] h-[650px] rounded-full bg-blue-500/20 blur-[130px]" />
+        <div className="absolute top-[20%] -right-[10%] w-[650px] h-[650px] rounded-full bg-blue-500/20 blur-2xl sm:blur-[130px]" />
 
         {/* Center Floor Cyan Light Pool */}
-        <div className="absolute bottom-[-10%] left-1/2 -translate-x-1/2 w-[900px] h-[450px] rounded-full bg-cyan-400/20 blur-[90px]" />
+        <div className="absolute bottom-[-10%] left-1/2 -translate-x-1/2 w-[900px] h-[450px] rounded-full bg-cyan-400/20 blur-2xl sm:blur-[90px]" />
       </div>
 
       {/* ================= LAYER 2: CITY SKYLINE & PANORAMIC GLASS WINDOWS (Matching image.png) ================= */}
