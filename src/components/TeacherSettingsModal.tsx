@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Lock,
@@ -7,18 +7,24 @@ import {
   Upload,
   FileText,
   CheckCircle,
-  AlertCircle,
   Plus,
   Trash2,
   Image as ImageIcon,
   Sliders,
   Download,
-  FolderOpen
+  FolderOpen,
+  User,
+  GraduationCap,
+  LogOut,
+  UserPlus,
+  Grid3X3,
+  Sparkles
 } from 'lucide-react';
-import { GameSettings, QuestionSet, Question, ChallengeType } from '../types';
+import { GameSettings, QuestionSet, Question, ChallengeType, TeacherAccount } from '../types';
 import { CHALLENGE_DEFINITIONS } from '../data/challenges';
 import { QuestionImporter } from '../services/QuestionImporter';
 import { audioManager } from '../services/AudioManager';
+import { indexedDBService, DEFAULT_REQUIRED_SCORES } from '../services/IndexedDBService';
 
 interface TeacherSettingsModalProps {
   settings: GameSettings;
@@ -26,6 +32,7 @@ interface TeacherSettingsModalProps {
   onSaveSettings: (settings: GameSettings) => void;
   onSaveQuestionSets: (sets: QuestionSet[], activeSetId: string) => void;
   onClose: () => void;
+  onTeacherChange?: (teacher: TeacherAccount) => void;
 }
 
 export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
@@ -33,48 +40,227 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
   questionSets,
   onSaveSettings,
   onSaveQuestionSets,
-  onClose
+  onClose,
+  onTeacherChange
 }) => {
-  // Password state
+  // Teacher Accounts state
+  const [teachers, setTeachers] = useState<TeacherAccount[]>([]);
+  const [currentTeacher, setCurrentTeacher] = useState<TeacherAccount | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loginMode, setLoginMode] = useState<'select' | 'register'>('select');
+
+  // Login form state
+  const [selectedTeacherId, setSelectedTeacherId] = useState<string>('');
   const [enteredPassword, setEnteredPassword] = useState('');
   const [authError, setAuthError] = useState('');
 
-  // Active tab
-  const [activeTab, setActiveTab] = useState<'challenge_scores' | 'challenges' | 'questions' | 'puzzle_image' | 'logo'>('challenge_scores');
+  // Register new teacher form state
+  const [newTeacherName, setNewTeacherName] = useState('');
+  const [newTeacherSchool, setNewTeacherSchool] = useState('FPT Schools');
+  const [newTeacherTitle, setNewTeacherTitle] = useState('Giáo viên STEM');
+  const [newTeacherUsername, setNewTeacherUsername] = useState('');
+  const [newTeacherPassword, setNewTeacherPassword] = useState('123');
 
-  // Local draft copies
+  // Active tab inside teacher dashboard
+  const [activeTab, setActiveTab] = useState<'challenge_scores' | 'questions' | 'puzzle_image' | 'profile' | 'challenges'>('challenge_scores');
+
+  // Local draft copies for active teacher
   const [localSettings, setLocalSettings] = useState<GameSettings>({ ...settings });
   const [localQuestionSets, setLocalQuestionSets] = useState<QuestionSet[]>([...questionSets]);
   const [activeSetId, setActiveSetId] = useState<string>(settings.activeQuestionSetId);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string>('');
 
-  // Question editing state
-  const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
-  const [importedText, setImportedText] = useState('');
-  const [showImportModal, setShowImportModal] = useState(false);
+  // New question form state
+  const [showAddQuestionModal, setShowAddQuestionModal] = useState(false);
+  const [newQContent, setNewQContent] = useState('');
+  const [newQOptA, setNewQOptA] = useState('');
+  const [newQOptB, setNewQOptB] = useState('');
+  const [newQOptC, setNewQOptC] = useState('');
+  const [newQOptD, setNewQOptD] = useState('');
+  const [newQCorrect, setNewQCorrect] = useState<'A' | 'B' | 'C' | 'D'>('A');
+  const [newQExplain, setNewQExplain] = useState('');
 
-  // Password verification
+  // Question Import Modal
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importedText, setImportedText] = useState('');
+
+  // New Question Set Modal
+  const [showNewSetModal, setShowNewSetModal] = useState(false);
+  const [newSetName, setNewSetName] = useState('');
+  const [newSetSubject, setNewSetSubject] = useState('STEM');
+  const [newSetGrade, setNewSetGrade] = useState('Khối Tiểu học');
+
+  // Load teachers on mount
+  useEffect(() => {
+    async function initTeachers() {
+      const list = await indexedDBService.getTeachers();
+      setTeachers(list);
+      const activeId = indexedDBService.getActiveTeacherId();
+      const active = list.find((t) => t.id === activeId) || list[0];
+      if (active) {
+        setSelectedTeacherId(active.id);
+        setCurrentTeacher(active);
+        // Pre-fill local draft with teacher's personalized settings
+        applyTeacherToState(active);
+      }
+    }
+    initTeachers();
+  }, []);
+
+  const applyTeacherToState = (teacher: TeacherAccount) => {
+    setCurrentTeacher(teacher);
+    setLocalSettings((prev) => ({
+      ...prev,
+      currentTeacherId: teacher.id,
+      teacherName: teacher.name,
+      schoolName: teacher.schoolName,
+      schoolLogoUrl: teacher.schoolLogoUrl || prev.schoolLogoUrl,
+      puzzleImageUrl: teacher.puzzleImageUrl || prev.puzzleImageUrl,
+      puzzleImageNaturalWidth: teacher.puzzleImageNaturalWidth || prev.puzzleImageNaturalWidth,
+      puzzleImageNaturalHeight: teacher.puzzleImageNaturalHeight || prev.puzzleImageNaturalHeight,
+      requiredScores: {
+        ...DEFAULT_REQUIRED_SCORES,
+        ...(teacher.requiredScores || {})
+      },
+      enabledChallenges: teacher.enabledChallenges || prev.enabledChallenges,
+      countdownDuration: teacher.countdownDuration || prev.countdownDuration,
+      activeQuestionSetId: teacher.activeQuestionSetId || prev.activeQuestionSetId,
+      teacherPassword: teacher.password || '123'
+    }));
+
+    if (teacher.questionSets && teacher.questionSets.length > 0) {
+      setLocalQuestionSets(teacher.questionSets);
+      setActiveSetId(teacher.activeQuestionSetId || teacher.questionSets[0].id);
+    }
+  };
+
+  // Login handler
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (enteredPassword === (settings.teacherPassword || '123456')) {
+    const teacher = teachers.find((t) => t.id === selectedTeacherId);
+    if (!teacher) {
+      setAuthError('Vui lòng chọn tài khoản giáo viên!');
+      return;
+    }
+
+    const expectedPwd = teacher.password || '123';
+    if (enteredPassword.trim() === expectedPwd || enteredPassword.trim() === '123456') {
       setIsAuthenticated(true);
       setAuthError('');
-      audioManager.playClick();
+      indexedDBService.setActiveTeacherId(teacher.id);
+      applyTeacherToState(teacher);
+      audioManager.playScoreTargetReached();
     } else {
-      setAuthError('Mật khẩu không chính xác! (Mặc định: 123456)');
+      setAuthError(`Mật khẩu không chính xác! (Mật khẩu mặc định: ${expectedPwd})`);
       audioManager.playPieceWrong();
     }
   };
 
-  // Find active question set
+  // Register new teacher
+  const handleRegisterNewTeacher = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTeacherName.trim()) {
+      setAuthError('Vui lòng nhập họ và tên giáo viên');
+      return;
+    }
+
+    const newId = 'teacher_' + Date.now();
+    const newUsername = (newTeacherUsername.trim() || 'gv_' + Date.now().toString().slice(-4)).toLowerCase();
+
+    const newTeacher: TeacherAccount = {
+      id: newId,
+      username: newUsername,
+      name: newTeacherName.trim(),
+      title: newTeacherTitle.trim() || 'Giáo viên STEM',
+      schoolName: newTeacherSchool.trim() || 'FPT Schools',
+      password: newTeacherPassword.trim() || '123',
+      avatarColor: ['#059669', '#0284c7', '#7c3aed', '#d97706', '#dc2626'][Math.floor(Math.random() * 5)],
+      puzzleImageUrl: '/assets/default_puzzle.svg',
+      puzzleImageNaturalWidth: 1200,
+      puzzleImageNaturalHeight: 800,
+      requiredScores: { ...DEFAULT_REQUIRED_SCORES },
+      enabledChallenges: { ...localSettings.enabledChallenges },
+      countdownDuration: 3,
+      activeQuestionSetId: localQuestionSets[0]?.id || 'set_stem_primary',
+      questionSets: [...localQuestionSets],
+      schoolLogoUrl: localSettings.schoolLogoUrl,
+      updatedAt: Date.now()
+    };
+
+    await indexedDBService.saveTeacher(newTeacher);
+    const updatedList = await indexedDBService.getTeachers();
+    setTeachers(updatedList);
+    setSelectedTeacherId(newTeacher.id);
+    indexedDBService.setActiveTeacherId(newTeacher.id);
+    applyTeacherToState(newTeacher);
+    setIsAuthenticated(true);
+    setAuthError('');
+    setLoginMode('select');
+    audioManager.playScoreTargetReached();
+  };
+
+  // Handle Logout / Switch teacher
+  const handleSwitchTeacher = () => {
+    setIsAuthenticated(false);
+    setEnteredPassword('');
+    setAuthError('');
+  };
+
+  // Current active question set
   const currentSet = localQuestionSets.find((s) => s.id === activeSetId) || localQuestionSets[0];
 
-  // Save all changes
-  const handleSaveAll = () => {
+  // Save changes specifically to the current teacher account
+  const saveCurrentTeacherProfile = async (
+    customSettings?: Partial<GameSettings>,
+    customQuestionSets?: QuestionSet[],
+    customActiveSetId?: string
+  ) => {
+    if (!currentTeacher) return;
+
+    const mergedSettings: GameSettings = {
+      ...localSettings,
+      ...(customSettings || {})
+    };
+
+    const targetSets = customQuestionSets || localQuestionSets;
+    const targetSetId = customActiveSetId || activeSetId;
+
+    const updatedTeacher: TeacherAccount = {
+      ...currentTeacher,
+      name: mergedSettings.teacherName,
+      schoolName: mergedSettings.schoolName,
+      password: mergedSettings.teacherPassword || currentTeacher.password || '123',
+      puzzleImageUrl: mergedSettings.puzzleImageUrl,
+      puzzleImageNaturalWidth: mergedSettings.puzzleImageNaturalWidth,
+      puzzleImageNaturalHeight: mergedSettings.puzzleImageNaturalHeight,
+      requiredScores: mergedSettings.requiredScores,
+      enabledChallenges: mergedSettings.enabledChallenges,
+      countdownDuration: mergedSettings.countdownDuration,
+      activeQuestionSetId: targetSetId,
+      questionSets: targetSets,
+      schoolLogoUrl: mergedSettings.schoolLogoUrl,
+      updatedAt: Date.now()
+    };
+
+    setCurrentTeacher(updatedTeacher);
+    await indexedDBService.saveTeacher(updatedTeacher);
+    indexedDBService.setActiveTeacherId(updatedTeacher.id);
+
+    // Refresh teachers list
+    const refreshed = await indexedDBService.getTeachers();
+    setTeachers(refreshed);
+
+    onSaveSettings(mergedSettings);
+    onSaveQuestionSets(targetSets, targetSetId);
+    if (onTeacherChange) {
+      onTeacherChange(updatedTeacher);
+    }
+  };
+
+  // Save all and close
+  const handleSaveAll = async () => {
     audioManager.playClick();
-    onSaveSettings(localSettings);
-    onSaveQuestionSets(localQuestionSets, activeSetId);
+    await saveCurrentTeacherProfile();
     try {
       localStorage.setItem('fpt_stem_challenge_scores', JSON.stringify(localSettings.requiredScores));
     } catch {}
@@ -82,35 +268,34 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
   };
 
   // Save scores specifically with immediate feedback
-  const handleSaveScoresOnly = () => {
+  const handleSaveScoresOnly = async () => {
     audioManager.playScoreTargetReached();
-    onSaveSettings(localSettings);
+    await saveCurrentTeacherProfile();
     try {
       localStorage.setItem('fpt_stem_challenge_scores', JSON.stringify(localSettings.requiredScores));
     } catch {}
-    setSaveSuccessMessage('✓ Đã lưu cài đặt điểm thành công! Cấu hình này sẽ được sử dụng cho mọi lượt chơi và không bị mất khi tải lại trang.');
+    setSaveSuccessMessage(`✓ Đã lưu cài đặt điểm cho tài khoản "${currentTeacher?.name || 'Giáo viên'}" thành công!`);
     setTimeout(() => {
       setSaveSuccessMessage('');
     }, 4000);
   };
 
-  // Quick Preset Handlers
+  // Preset scores handlers
   const handleApplyPresetStandard = () => {
     setLocalSettings((prev) => ({
       ...prev,
       requiredScores: {
-        ...prev.requiredScores,
         mouth_pucker: 50,
-        smile: 50,
-        grin: 40,
+        cheek_puff: 50,
         wink_left: 20,
         wink_right: 20,
+        smile: 50,
+        grin: 40,
         eyes_closed: 70,
         mouth_open: 60,
         mouth_stretch: 75,
         head_shake: 65,
         head_nod: 65,
-        cheek_puff: 50,
         brow_raise: 65
       }
     }));
@@ -120,9 +305,8 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
   const handleAdjustAllScores = (delta: number) => {
     setLocalSettings((prev) => {
       const nextScores: Record<ChallengeType, number> = { ...prev.requiredScores };
-      Object.keys(nextScores).forEach((k) => {
-        const key = k as ChallengeType;
-        const current = nextScores[key] ?? 65;
+      (Object.keys(nextScores) as ChallengeType[]).forEach((key) => {
+        const current = nextScores[key] ?? 50;
         nextScores[key] = Math.min(100, Math.max(10, current + delta));
       });
       return {
@@ -133,12 +317,20 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     audioManager.playClick();
   };
 
-  // Toggle challenge enabled
+  const updateChallengeScore = (type: ChallengeType, score: number) => {
+    setLocalSettings((prev) => ({
+      ...prev,
+      requiredScores: {
+        ...prev.requiredScores,
+        [type]: Math.min(100, Math.max(10, score))
+      }
+    }));
+  };
+
   const toggleChallenge = (type: ChallengeType) => {
     setLocalSettings((prev) => {
       const isCurrentlyEnabled = !!prev.enabledChallenges[type];
       const activeCount = Object.values(prev.enabledChallenges).filter(Boolean).length;
-      // Keep at least 1 challenge enabled
       if (isCurrentlyEnabled && activeCount <= 1) {
         return prev;
       }
@@ -152,17 +344,6 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     });
   };
 
-  // Change challenge required score
-  const updateChallengeScore = (type: ChallengeType, score: number) => {
-    setLocalSettings((prev) => ({
-      ...prev,
-      requiredScores: {
-        ...prev.requiredScores,
-        [type]: Math.min(100, Math.max(10, score))
-      }
-    }));
-  };
-
   // Handle puzzle image file upload
   const handlePuzzleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -171,15 +352,23 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     const reader = new FileReader();
     reader.onload = (event) => {
       const url = event.target?.result as string;
-      // Extract natural dimensions
       const img = new Image();
       img.onload = () => {
+        const newWidth = img.naturalWidth || 1200;
+        const newHeight = img.naturalHeight || 800;
         setLocalSettings((prev) => ({
           ...prev,
           puzzleImageUrl: url,
-          puzzleImageNaturalWidth: img.naturalWidth,
-          puzzleImageNaturalHeight: img.naturalHeight
+          puzzleImageNaturalWidth: newWidth,
+          puzzleImageNaturalHeight: newHeight
         }));
+        saveCurrentTeacherProfile({
+          puzzleImageUrl: url,
+          puzzleImageNaturalWidth: newWidth,
+          puzzleImageNaturalHeight: newHeight
+        });
+        setSaveSuccessMessage('✓ Đã cập nhật ảnh tranh bí ẩn mới cho tài khoản của bạn!');
+        setTimeout(() => setSaveSuccessMessage(''), 4000);
       };
       img.src = url;
     };
@@ -204,20 +393,97 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
 
   // Import questions from text
   const handleExecuteImport = () => {
-    if (!importedText.trim()) return;
+    if (!importedText.trim() || !currentSet) return;
     const parsed = QuestionImporter.parseText(importedText);
-    if (parsed.length > 0 && currentSet) {
-      setLocalQuestionSets((prev) =>
-        prev.map((set) =>
-          set.id === currentSet.id
-            ? { ...set, questions: [...set.questions, ...parsed] }
-            : set
-        )
+    if (parsed.length > 0) {
+      const updatedSets = localQuestionSets.map((set) =>
+        set.id === currentSet.id
+          ? { ...set, questions: [...set.questions, ...parsed] }
+          : set
       );
+      setLocalQuestionSets(updatedSets);
+      saveCurrentTeacherProfile(undefined, updatedSets, activeSetId);
       setImportedText('');
       setShowImportModal(false);
       audioManager.playScoreTargetReached();
+      setSaveSuccessMessage(`✓ Đã nhập thành công ${parsed.length} câu hỏi mới vào bộ "${currentSet.name}"!`);
+      setTimeout(() => setSaveSuccessMessage(''), 4000);
     }
+  };
+
+  // Add a single custom question
+  const handleAddSingleQuestion = () => {
+    if (!newQContent.trim() || !newQOptA.trim() || !newQOptB.trim()) return;
+
+    const newQ: Question = {
+      id: 'q_' + Date.now(),
+      content: newQContent.trim(),
+      options: [
+        newQOptA.trim(),
+        newQOptB.trim(),
+        newQOptC.trim() || 'Đáp án C',
+        newQOptD.trim() || 'Đáp án D'
+      ],
+      correctAnswer: newQCorrect,
+      explanation: newQExplain.trim() || undefined,
+      isConfirmed: true
+    };
+
+    const updatedSets = localQuestionSets.map((s) =>
+      s.id === currentSet.id
+        ? { ...s, questions: [...s.questions, newQ] }
+        : s
+    );
+
+    setLocalQuestionSets(updatedSets);
+    saveCurrentTeacherProfile(undefined, updatedSets, activeSetId);
+
+    // Reset form
+    setNewQContent('');
+    setNewQOptA('');
+    setNewQOptB('');
+    setNewQOptC('');
+    setNewQOptD('');
+    setNewQExplain('');
+    setShowAddQuestionModal(false);
+    audioManager.playScoreTargetReached();
+  };
+
+  // Create new question set
+  const handleCreateNewQuestionSet = () => {
+    if (!newSetName.trim()) return;
+
+    const newSet: QuestionSet = {
+      id: 'set_' + Date.now(),
+      name: newSetName.trim(),
+      subject: newSetSubject.trim() || 'STEM',
+      grade: newSetGrade.trim() || 'Tiểu học',
+      status: 'saved',
+      updatedAt: Date.now(),
+      questions: [
+        {
+          id: 'q_init_1',
+          content: `Câu hỏi 1 thuộc bộ môn ${newSetSubject}: STEM mang lại lợi ích gì cho học sinh?`,
+          options: [
+            'Phát triển tư duy giải quyết vấn đề và năng lực sáng tạo.',
+            'Chỉ giúp học sinh học thuộc các công thức toán học.',
+            'Thay thế hoàn toàn sách giáo khoa truyền thống.',
+            'Chỉ dành cho các học sinh giỏi công nghệ.'
+          ],
+          correctAnswer: 'A',
+          explanation: 'STEM tích hợp kiến thức giúp giải quyết vấn đề thực tế.',
+          isConfirmed: true
+        }
+      ]
+    };
+
+    const updatedSets = [...localQuestionSets, newSet];
+    setLocalQuestionSets(updatedSets);
+    setActiveSetId(newSet.id);
+    saveCurrentTeacherProfile(undefined, updatedSets, newSet.id);
+    setShowNewSetModal(false);
+    setNewSetName('');
+    audioManager.playScoreTargetReached();
   };
 
   // Download template
@@ -226,167 +492,361 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = 'mau_cau_hoi_stem.txt';
+    link.download = 'mau_cau_hoi_stem_fpt.txt';
     link.click();
   };
 
-  // If not authenticated, render password lock screen
+  // ================= 1. TEACHER AUTHENTICATION / LOGIN VIEW =================
   if (!isAuthenticated) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md select-none">
-        <div className="w-full max-w-md bg-slate-900 border-2 border-cyan-500/50 rounded-3xl p-6 sm:p-8 shadow-2xl">
-          <div className="flex justify-between items-center mb-6">
-            <div className="flex items-center gap-2 text-cyan-300 font-bold">
-              <Lock className="w-5 h-5" />
-              <span>CÀI ĐẶT DÀNH CHO GIÁO VIÊN</span>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md select-none overflow-y-auto">
+        <div className="w-full max-w-lg bg-slate-900 border-2 border-cyan-500/50 rounded-3xl p-6 sm:p-8 shadow-2xl">
+          {/* Header */}
+          <div className="flex justify-between items-center mb-6 border-b border-slate-800 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-yellow-300 flex items-center justify-center text-slate-950 font-black shadow-md">
+                <GraduationCap className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base sm:text-lg font-black text-slate-100 uppercase">
+                  CÀI ĐẶT CÁ NHÂN HÓA GIÁO VIÊN
+                </h3>
+                <p className="text-xs text-cyan-400">Đăng nhập tài khoản giáo viên để tùy biến nội dung</p>
+              </div>
             </div>
             <button
               onClick={onClose}
-              className="text-slate-400 hover:text-white p-1 rounded-lg"
+              className="text-slate-400 hover:text-white p-1 rounded-lg transition"
             >
               <X className="w-6 h-6" />
             </button>
           </div>
 
-          <form onSubmit={handleLogin}>
-            <p className="text-sm text-slate-300 mb-4 font-medium">
-              Vui lòng nhập mật khẩu quản trị để vào bảng cấu hình thử thách và ngân hàng câu hỏi.
-            </p>
-            <input
-              type="password"
-              value={enteredPassword}
-              onChange={(e) => setEnteredPassword(e.target.value)}
-              placeholder="Nhập mật khẩu..."
-              className="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-white font-semibold outline-none focus:border-cyan-400 mb-2"
-              autoFocus
-            />
-            {authError && <p className="text-xs text-red-400 mb-4">{authError}</p>}
-
+          {/* Mode Switcher */}
+          <div className="flex rounded-xl bg-slate-950 p-1 mb-5 border border-slate-800">
             <button
-              type="submit"
-              className="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-sm uppercase shadow-md transition"
+              type="button"
+              onClick={() => {
+                setLoginMode('select');
+                setAuthError('');
+              }}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition ${
+                loginMode === 'select'
+                  ? 'bg-cyan-500 text-slate-950 shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
             >
-              XÁC NHẬN
+              Đăng nhập tài khoản có sẵn
             </button>
-          </form>
+            <button
+              type="button"
+              onClick={() => {
+                setLoginMode('register');
+                setAuthError('');
+              }}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition flex items-center justify-center gap-1.5 ${
+                loginMode === 'register'
+                  ? 'bg-amber-400 text-slate-950 shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <UserPlus className="w-3.5 h-3.5" /> Tạo giáo viên mới
+            </button>
+          </div>
+
+          {loginMode === 'select' ? (
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-2">
+                  Chọn tài khoản giáo viên:
+                </label>
+                <div className="space-y-2">
+                  {teachers.map((t) => (
+                    <label
+                      key={t.id}
+                      className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition ${
+                        selectedTeacherId === t.id
+                          ? 'bg-cyan-950/60 border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.25)]'
+                          : 'bg-slate-800/60 border-slate-700 hover:bg-slate-800'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shadow"
+                          style={{ backgroundColor: t.avatarColor || '#059669' }}
+                        >
+                          {t.name.split(' ').pop()?.[0] || 'G'}
+                        </div>
+                        <div>
+                          <div className="font-bold text-sm text-slate-100">{t.name}</div>
+                          <div className="text-xs text-slate-400">
+                            {t.title || 'Giáo viên'} • {t.schoolName}
+                          </div>
+                        </div>
+                      </div>
+                      <input
+                        type="radio"
+                        name="teacher"
+                        value={t.id}
+                        checked={selectedTeacherId === t.id}
+                        onChange={() => setSelectedTeacherId(t.id)}
+                        className="w-4 h-4 accent-cyan-400"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  Mật khẩu tài khoản (Mặc định: 123 hoặc 123456):
+                </label>
+                <div className="relative flex items-center">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
+                  <input
+                    type="password"
+                    value={enteredPassword}
+                    onChange={(e) => setEnteredPassword(e.target.value)}
+                    placeholder="Nhập mật khẩu..."
+                    className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-white font-semibold outline-none focus:border-cyan-400 text-sm"
+                    autoFocus
+                  />
+                </div>
+                {authError && <p className="text-xs text-red-400 mt-2 font-medium">{authError}</p>}
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-sm uppercase shadow-lg transition cursor-pointer"
+              >
+                VÀO BẢNG CÀI ĐẶT CÁ NHÂN
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleRegisterNewTeacher} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  Họ và tên giáo viên <span className="text-amber-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={newTeacherName}
+                  onChange={(e) => setNewTeacherName(e.target.value)}
+                  placeholder="Ví dụ: Cô Lê Thị Mai"
+                  required
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white font-medium text-sm outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Bộ môn / Vai trò</label>
+                  <input
+                    type="text"
+                    value={newTeacherTitle}
+                    onChange={(e) => setNewTeacherTitle(e.target.value)}
+                    placeholder="Ví dụ: STEM Robotics"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs outline-none focus:border-amber-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Trường học</label>
+                  <input
+                    type="text"
+                    value={newTeacherSchool}
+                    onChange={(e) => setNewTeacherSchool(e.target.value)}
+                    placeholder="Ví dụ: Tiểu học FPT"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs outline-none focus:border-amber-400"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Tên đăng nhập</label>
+                  <input
+                    type="text"
+                    value={newTeacherUsername}
+                    onChange={(e) => setNewTeacherUsername(e.target.value)}
+                    placeholder="Ví dụ: gv_mai"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs outline-none focus:border-amber-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Mật khẩu PIN</label>
+                  <input
+                    type="text"
+                    value={newTeacherPassword}
+                    onChange={(e) => setNewTeacherPassword(e.target.value)}
+                    placeholder="Mặc định: 123"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs outline-none focus:border-amber-400"
+                  />
+                </div>
+              </div>
+
+              {authError && <p className="text-xs text-red-400 font-medium">{authError}</p>}
+
+              <button
+                type="submit"
+                className="w-full mt-2 py-3.5 rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-slate-950 font-black text-sm uppercase shadow-lg transition cursor-pointer"
+              >
+                TẠO TÀI KHOẢN VÀ VÀO CÀI ĐẶT
+              </button>
+            </form>
+          )}
         </div>
       </div>
     );
   }
 
+  // ================= 2. AUTHENTICATED TEACHER DASHBOARD =================
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-md select-none overflow-y-auto">
       <div className="w-full max-w-5xl bg-slate-900 border-2 border-cyan-500/40 rounded-3xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/90">
+        {/* Header Bar with Current Teacher Profile */}
+        <div className="flex flex-wrap items-center justify-between px-6 py-3.5 border-b border-slate-800 bg-slate-900/90 gap-3">
           <div className="flex items-center gap-3">
-            <Sliders className="w-6 h-6 text-amber-400" />
+            <div
+              className="w-10 h-10 rounded-2xl flex items-center justify-center font-black text-white text-base shadow-md"
+              style={{ backgroundColor: currentTeacher?.avatarColor || '#059669' }}
+            >
+              {currentTeacher?.name.split(' ').pop()?.[0] || 'G'}
+            </div>
             <div>
-              <h2 className="text-lg sm:text-xl font-black text-slate-100">
-                BẢNG ĐIỀU HÀNH VÀ CÀI ĐẶT
-              </h2>
-              <p className="text-xs text-cyan-400">Tùy biến thử thách biểu cảm, ngân hàng câu hỏi và tranh ghép</p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-black text-slate-100">
+                  {currentTeacher?.name || 'Giáo viên'}
+                </h2>
+                <span className="px-2 py-0.5 rounded-full bg-cyan-950 border border-cyan-500/50 text-cyan-300 text-[10px] font-bold">
+                  Tài khoản cá nhân
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">
+                {currentTeacher?.schoolName} • {currentTeacher?.title || 'Phụ trách môn học'}
+              </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-white p-1 rounded-lg"
-          >
-            <X className="w-6 h-6" />
-          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSwitchTeacher}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition"
+              title="Đổi giáo viên"
+            >
+              <LogOut className="w-3.5 h-3.5" /> Đổi tài khoản
+            </button>
+            <button
+              onClick={onClose}
+              className="text-slate-400 hover:text-white p-1 rounded-lg transition"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex flex-wrap items-center gap-2 px-6 py-2.5 border-b border-slate-800 bg-slate-950/60">
+        {/* Tab Navigation: 5 core tabs */}
+        <div className="flex flex-wrap items-center gap-1.5 px-6 py-2 border-b border-slate-800 bg-slate-950/70">
           <button
             onClick={() => setActiveTab('challenge_scores')}
-            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 cursor-pointer ${
+            className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 cursor-pointer ${
               activeTab === 'challenge_scores'
-                ? 'bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-300 border border-amber-500/50 shadow-[0_0_12px_rgba(245,158,11,0.25)]'
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/60 shadow-[0_0_12px_rgba(245,158,11,0.25)]'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Sliders className="w-4 h-4 text-amber-400" /> CÀI ĐẶT ĐIỂM THỬ THÁCH KHUÔN MẶT
-          </button>
-
-          <button
-            onClick={() => setActiveTab('challenges')}
-            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 cursor-pointer ${
-              activeTab === 'challenges'
-                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <RotateCcw className="w-4 h-4" /> Bật/Tắt Biểu Cảm & Đếm Ngược
+            <Sliders className="w-4 h-4 text-amber-400" />
+            <span>1. Tự set điểm đạt</span>
           </button>
 
           <button
             onClick={() => setActiveTab('questions')}
-            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 cursor-pointer ${
+            className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 cursor-pointer ${
               activeTab === 'questions'
-                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50'
+                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/60 shadow-[0_0_12px_rgba(6,182,212,0.25)]'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <FolderOpen className="w-4 h-4" /> Bộ câu hỏi ({currentSet?.questions.length || 0})
+            <FolderOpen className="w-4 h-4 text-cyan-400" />
+            <span>2. Tự đẩy câu hỏi ({currentSet?.questions.length || 0})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('puzzle_image')}
-            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 cursor-pointer ${
+            className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 cursor-pointer ${
               activeTab === 'puzzle_image'
-                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50'
+                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/60 shadow-[0_0_12px_rgba(6,182,212,0.25)]'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <ImageIcon className="w-4 h-4" /> Tranh bí ẩn
+            <ImageIcon className="w-4 h-4 text-cyan-400" />
+            <span>3. Tự đẩy hình ảnh tranh ghép</span>
           </button>
 
           <button
-            onClick={() => setActiveTab('logo')}
-            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 cursor-pointer ${
-              activeTab === 'logo'
-                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50'
+            onClick={() => setActiveTab('profile')}
+            className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 cursor-pointer ${
+              activeTab === 'profile'
+                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/60'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <FileText className="w-4 h-4" /> Logo trường học
+            <User className="w-4 h-4" />
+            <span>Hồ sơ giáo viên</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('challenges')}
+            className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 cursor-pointer ${
+              activeTab === 'challenges'
+                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/60'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <RotateCcw className="w-4 h-4" />
+            <span>Bật/Tắt Biểu Cảm</span>
           </button>
         </div>
 
         {/* Tab Body */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {/* ================= 1. CÀI ĐẶT ĐIỂM THỬ THÁCH KHUÔN MẶT ================= */}
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
+          {/* Success Banner */}
+          {saveSuccessMessage && (
+            <div className="p-3.5 rounded-2xl bg-emerald-950/80 border-2 border-emerald-400 text-emerald-300 flex items-center gap-3 animate-in fade-in">
+              <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0" />
+              <p className="text-xs sm:text-sm font-bold">{saveSuccessMessage}</p>
+            </div>
+          )}
+
+          {/* ================= TAB 1: TỰ SET SỐ ĐIỂM CẦN ĐẠT ĐƯỢC ================= */}
           {activeTab === 'challenge_scores' && (
             <div className="space-y-6">
-              {/* Header Box */}
               <div className="p-5 rounded-2xl bg-gradient-to-r from-amber-950/40 via-slate-800/80 to-slate-900 border border-amber-500/40 shadow-lg">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div>
                     <div className="flex items-center gap-2 text-amber-300 font-black text-base sm:text-lg uppercase">
                       <Sliders className="w-5 h-5 text-amber-400" />
-                      <span>CÀI ĐẶT ĐIỂM THỬ THÁCH KHUÔN MẶT</span>
+                      <span>CÀI ĐẶT ĐIỂM CẦN ĐẠT CỦA {currentTeacher?.name.toUpperCase()}</span>
                     </div>
                     <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-2xl leading-relaxed">
-                      Mỗi biểu cảm/khuôn mặt có mức độ nhận diện dễ hoặc khó khác nhau. Bạn có thể tự thiết lập <strong>Điểm yêu cầu riêng cho TỪNG thử thách</strong> (Ví dụ: Chu môi: 100, Cười mỉm: 50, Cười lộ răng: 40, Nháy mắt: 80...). Khi người chơi đạt đủ điểm này, hệ thống sẽ xác nhận hoàn thành ngay.
+                      Thiết lập <strong>số điểm mục tiêu riêng cho từng biểu cảm</strong> theo độ tuổi học sinh lớp của bạn (Chu môi: 50, Phồng má: 50, Nháy mắt: 20...). Sau khi học sinh đạt đủ mức điểm này, AI sẽ lập tức ghi nhận vượt qua thử thách.
                     </p>
                   </div>
                   <button
                     onClick={handleSaveScoresOnly}
                     className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-xs sm:text-sm uppercase flex items-center gap-2 shadow-[0_0_15px_rgba(245,158,11,0.4)] cursor-pointer shrink-0 transition"
                   >
-                    <Save className="w-4 h-4" /> LƯU CÀI ĐẶT
+                    <Save className="w-4 h-4" /> LƯU CHO TÀI KHOẢN NÀY
                   </button>
                 </div>
 
-                {/* Quick Preset Buttons */}
+                {/* Quick Presets */}
                 <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-slate-700/80">
                   <span className="text-xs text-slate-400 font-semibold">Cấu hình nhanh:</span>
                   <button
                     onClick={handleApplyPresetStandard}
-                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-amber-500/30 text-amber-300 text-xs font-bold transition cursor-pointer"
+                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-amber-500/40 text-amber-300 text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
                   >
-                    ⭐ Chuẩn đề xuất (Chu môi 100, Mỉm 50, Răng 40, Nháy mắt 80)
+                    <Sparkles className="w-3.5 h-3.5" /> Chuẩn tối ưu (Chu môi 50, Phồng má 50, Nháy mắt 20)
                   </button>
                   <button
                     onClick={() => handleAdjustAllScores(-10)}
@@ -403,24 +863,14 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                 </div>
               </div>
 
-              {/* Save Success Alert */}
-              {saveSuccessMessage && (
-                <div className="p-4 rounded-2xl bg-emerald-950/80 border-2 border-emerald-400 text-emerald-300 flex items-center gap-3 animate-in fade-in zoom-in duration-200">
-                  <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0" />
-                  <p className="text-xs sm:text-sm font-bold">{saveSuccessMessage}</p>
-                </div>
-              )}
-
-              {/* Challenge Score Table / List matching: [Tên thử thách] | [Điểm yêu cầu] */}
+              {/* Table of 12 Challenges */}
               <div className="rounded-2xl border border-slate-700 bg-slate-900/80 overflow-hidden shadow-md">
-                {/* Table Header */}
                 <div className="grid grid-cols-12 gap-3 px-5 py-3.5 bg-slate-950 border-b border-slate-800 text-xs font-black uppercase text-cyan-400 tracking-wider">
-                  <div className="col-span-6 sm:col-span-5">Tên thử thách khuôn mặt</div>
-                  <div className="hidden sm:block sm:col-span-3">Hướng dẫn nhận diện</div>
-                  <div className="col-span-6 sm:col-span-4 text-right sm:text-center">Điểm yêu cầu (10 - 100)</div>
+                  <div className="col-span-6 sm:col-span-5">Thử thách biểu cảm</div>
+                  <div className="hidden sm:block sm:col-span-3">Mô tả nhận diện</div>
+                  <div className="col-span-6 sm:col-span-4 text-right sm:text-center">Số điểm cần đạt (10 - 100)</div>
                 </div>
 
-                {/* Rows for 12 Challenges */}
                 <div className="divide-y divide-slate-800">
                   {Object.values(CHALLENGE_DEFINITIONS).map((ch) => {
                     const currentScore = localSettings.requiredScores[ch.id] ?? ch.defaultScore;
@@ -428,27 +878,20 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                     return (
                       <div
                         key={ch.id}
-                        className="grid grid-cols-12 gap-3 px-5 py-3.5 items-center hover:bg-slate-800/40 transition"
+                        className="grid grid-cols-12 gap-3 px-5 py-3 items-center hover:bg-slate-800/40 transition"
                       >
-                        {/* [Tên thử thách] */}
                         <div className="col-span-6 sm:col-span-5 flex items-center gap-3">
                           <span className="text-2xl select-none">{ch.icon}</span>
                           <div>
-                            <div className="font-bold text-sm sm:text-base text-slate-100">
-                              {ch.name}
-                            </div>
-                            <div className="sm:hidden text-[11px] text-slate-400 line-clamp-1">
-                              {ch.instruction}
-                            </div>
+                            <div className="font-bold text-sm sm:text-base text-slate-100">{ch.name}</div>
+                            <div className="sm:hidden text-[11px] text-slate-400 line-clamp-1">{ch.instruction}</div>
                           </div>
                         </div>
 
-                        {/* Instruction Column */}
                         <div className="hidden sm:block sm:col-span-3 text-xs text-slate-400">
                           {ch.instruction}
                         </div>
 
-                        {/* [Điểm yêu cầu] Input Field */}
                         <div className="col-span-6 sm:col-span-4 flex items-center justify-end sm:justify-center gap-2">
                           <button
                             onClick={() => updateChallengeScore(ch.id, currentScore - 5)}
@@ -458,7 +901,6 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                             -
                           </button>
 
-                          {/* Direct Input Field [ 100 ] */}
                           <div className="relative">
                             <input
                               type="number"
@@ -487,17 +929,16 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                             +
                           </button>
 
-                          {/* Difficulty badge */}
                           <span
                             className={`hidden md:inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                              currentScore >= 90
+                              currentScore >= 80
                                 ? 'bg-red-950 text-red-300 border border-red-500/40'
-                                : currentScore >= 70
+                                : currentScore >= 50
                                 ? 'bg-amber-950 text-amber-300 border border-amber-500/40'
                                 : 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
                             }`}
                           >
-                            {currentScore >= 90 ? 'Khó' : currentScore >= 70 ? 'Vừa' : 'Dễ'}
+                            {currentScore >= 80 ? 'Khó' : currentScore >= 50 ? 'Chuẩn' : 'Dễ'}
                           </span>
                         </div>
                       </div>
@@ -506,22 +947,309 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                 </div>
               </div>
 
-              {/* Bottom Action Footer */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-slate-800/40 border border-slate-700">
-                <p className="text-xs text-slate-400">
-                  💡 <strong>Ghi chú:</strong> Sau khi nhấn <strong>LƯU CÀI ĐẶT</strong>, hệ thống sẽ lưu và áp dụng ngay cho tất cả thử thách khi học sinh bắt đầu chơi. Cấu hình được ghi nhớ vĩnh viễn trên trình duyệt.
-                </p>
+              <div className="flex justify-end">
                 <button
                   onClick={handleSaveScoresOnly}
-                  className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-sm uppercase flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(245,158,11,0.5)] cursor-pointer transition shrink-0"
+                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-sm uppercase flex items-center gap-2 shadow-md cursor-pointer transition"
                 >
-                  <Save className="w-4 h-4" /> LƯU CÀI ĐẶT
+                  <Save className="w-4 h-4" /> LƯU ĐIỂM CHO TÀI KHOẢN NÀY
                 </button>
               </div>
             </div>
           )}
 
-          {/* ================= 2. BẬT/TẮT BIỂU CẢM & ĐẾM NGƯỢC ================= */}
+          {/* ================= TAB 2: TỰ ĐẨY CÂU HỎI ================= */}
+          {activeTab === 'questions' && (
+            <div className="space-y-6">
+              {/* Top Controls: Choose question set + Add question buttons */}
+              <div className="p-4 rounded-2xl bg-slate-800/60 border border-slate-700 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs sm:text-sm font-bold text-slate-300">Bộ câu hỏi của bạn:</span>
+                  <select
+                    value={activeSetId}
+                    onChange={(e) => {
+                      const newId = e.target.value;
+                      setActiveSetId(newId);
+                      saveCurrentTeacherProfile(undefined, undefined, newId);
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-slate-900 border border-cyan-500/50 text-cyan-300 font-bold text-xs sm:text-sm outline-none"
+                  >
+                    {localQuestionSets.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.questions.length} câu)
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    onClick={() => setShowNewSetModal(true)}
+                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-bold border border-cyan-500/40 flex items-center gap-1.5"
+                    title="Tạo bộ câu hỏi mới"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Tạo bộ mới
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={handleDownloadTemplate}
+                    className="px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-cyan-300 text-xs font-bold flex items-center gap-1.5"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Tải tệp mẫu TXT
+                  </button>
+
+                  <button
+                    onClick={() => setShowImportModal(true)}
+                    className="px-3 py-2 rounded-xl bg-cyan-600/30 border border-cyan-500 hover:bg-cyan-500/40 text-cyan-200 text-xs font-bold flex items-center gap-1.5"
+                  >
+                    <Upload className="w-3.5 h-3.5" /> Tự đẩy câu hỏi (TXT)
+                  </button>
+
+                  <button
+                    onClick={() => setShowAddQuestionModal(true)}
+                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 text-xs font-black uppercase flex items-center gap-1.5 shadow"
+                  >
+                    <Plus className="w-4 h-4" /> Thêm 1 câu hỏi
+                  </button>
+                </div>
+              </div>
+
+              {/* Questions List */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+                  <span>Danh sách ({currentSet?.questions.length || 0} câu)</span>
+                  <span>Đang áp dụng cho bài học của giáo viên {currentTeacher?.name}</span>
+                </div>
+
+                {currentSet?.questions.map((q, idx) => (
+                  <div
+                    key={q.id}
+                    className="p-4 rounded-2xl bg-slate-800/60 border border-slate-700 flex flex-col gap-2.5 hover:border-slate-600 transition"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="font-bold text-sm text-slate-100">
+                        Câu {idx + 1}: {q.content}
+                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-950 text-emerald-300 text-[10px] font-bold border border-emerald-800 flex items-center gap-1">
+                          <CheckCircle className="w-3 h-3" /> Đáp án: {q.correctAnswer}
+                        </span>
+                        <button
+                          onClick={() => {
+                            if (currentSet.questions.length <= 1) return;
+                            const updatedQuestions = currentSet.questions.filter((item) => item.id !== q.id);
+                            const updatedSets = localQuestionSets.map((s) =>
+                              s.id === currentSet.id ? { ...s, questions: updatedQuestions } : s
+                            );
+                            setLocalQuestionSets(updatedSets);
+                            saveCurrentTeacherProfile(undefined, updatedSets, activeSetId);
+                          }}
+                          className="text-slate-400 hover:text-red-400 p-1 transition"
+                          title="Xóa câu hỏi này"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      {q.options.map((opt, oIdx) => {
+                        const optKey = (['A', 'B', 'C', 'D'] as const)[oIdx];
+                        const isCorrect = optKey === q.correctAnswer;
+                        return (
+                          <div
+                            key={optKey}
+                            className={`p-2.5 rounded-xl border ${
+                              isCorrect
+                                ? 'bg-emerald-950/70 border-emerald-500 text-emerald-200 font-bold shadow-sm'
+                                : 'bg-slate-900 border-slate-800 text-slate-300'
+                            }`}
+                          >
+                            <span className="font-bold mr-1.5">{optKey}.</span> {opt}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {q.explanation && (
+                      <div className="text-[11px] text-slate-400 italic bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+                        💡 Giải thích: {q.explanation}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ================= TAB 3: TỰ ĐẨY HÌNH ẢNH TRANH GHÉP ================= */}
+          {activeTab === 'puzzle_image' && (
+            <div className="space-y-6">
+              <div className="p-5 rounded-2xl bg-slate-800/50 border border-slate-700">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+                  <div>
+                    <h4 className="font-bold text-slate-100 text-base">
+                      Bức tranh bí ẩn riêng của {currentTeacher?.name}
+                    </h4>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Bạn có thể tự đẩy bất kỳ bức ảnh nào (ảnh lớp học, bài học STEM, robot, sản phẩm sáng tạo) để học sinh mở khóa và ghép thành bức tranh hoàn chỉnh!
+                    </p>
+                  </div>
+
+                  <label className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs uppercase cursor-pointer flex items-center gap-2 shadow-lg transition shrink-0">
+                    <Upload className="w-4 h-4" /> Tự đẩy hình ảnh mới
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePuzzleImageUpload}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+
+                {/* Picture Preview with 3x3 Grid Overlay */}
+                <div className="relative w-full max-w-xl mx-auto aspect-[4/3] rounded-2xl overflow-hidden border-2 border-cyan-500/50 bg-slate-950 shadow-2xl mb-4 group">
+                  <img
+                    src={localSettings.puzzleImageUrl}
+                    alt="Tranh bí ẩn"
+                    className="w-full h-full object-contain"
+                  />
+
+                  {/* 3x3 Visual Grid Overlay to show cutting preview */}
+                  <div className="absolute inset-0 pointer-events-none grid grid-cols-3 grid-rows-3 border border-cyan-400/30">
+                    {[...Array(9)].map((_, i) => (
+                      <div
+                        key={i}
+                        className="border border-cyan-400/20 flex items-center justify-center"
+                      >
+                        <span className="text-[11px] font-mono text-cyan-300/40 bg-slate-950/40 px-1.5 py-0.5 rounded">
+                          Mảnh {i + 1}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="absolute bottom-2 right-2 px-2.5 py-1 rounded-lg bg-slate-950/80 backdrop-blur border border-slate-700 text-[11px] text-cyan-300 font-mono">
+                    <Grid3X3 className="w-3.5 h-3.5 inline mr-1" />
+                    Chia tự động 9 mảnh chuẩn
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-700">
+                  <div className="text-xs text-slate-400">
+                    Kích thước gốc: {localSettings.puzzleImageNaturalWidth} × {localSettings.puzzleImageNaturalHeight} px
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setLocalSettings({
+                          ...localSettings,
+                          puzzleImageUrl: '/assets/default_puzzle.svg',
+                          puzzleImageNaturalWidth: 1200,
+                          puzzleImageNaturalHeight: 800
+                        });
+                        saveCurrentTeacherProfile({
+                          puzzleImageUrl: '/assets/default_puzzle.svg',
+                          puzzleImageNaturalWidth: 1200,
+                          puzzleImageNaturalHeight: 800
+                        });
+                        setSaveSuccessMessage('✓ Đã chuyển về tranh STEM FPT Schools mặc định');
+                        setTimeout(() => setSaveSuccessMessage(''), 3000);
+                      }}
+                      className="px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center gap-2 transition"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" /> Dùng tranh STEM FPT mặc định
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ================= TAB 4: HỒ SƠ GIÁO VIÊN & TRƯỜNG ================= */}
+          {activeTab === 'profile' && (
+            <div className="space-y-6">
+              <div className="p-5 rounded-2xl bg-slate-800/50 border border-slate-700 space-y-4">
+                <h4 className="font-bold text-slate-100 text-base">Thông tin cá nhân & Trường học</h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">Họ tên giáo viên</label>
+                    <input
+                      type="text"
+                      value={localSettings.teacherName}
+                      onChange={(e) => {
+                        setLocalSettings({ ...localSettings, teacherName: e.target.value });
+                      }}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm outline-none focus:border-cyan-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">Tên trường học</label>
+                    <input
+                      type="text"
+                      value={localSettings.schoolName}
+                      onChange={(e) => {
+                        setLocalSettings({ ...localSettings, schoolName: e.target.value });
+                      }}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm outline-none focus:border-cyan-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">Mật khẩu PIN giáo viên</label>
+                    <input
+                      type="text"
+                      value={localSettings.teacherPassword || '123'}
+                      onChange={(e) => {
+                        setLocalSettings({ ...localSettings, teacherPassword: e.target.value });
+                      }}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm outline-none focus:border-cyan-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">Logo trường học</label>
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-xl bg-slate-950 border border-slate-800 h-10 flex items-center justify-center">
+                        <img
+                          src={localSettings.schoolLogoUrl}
+                          alt="Logo"
+                          className="h-7 w-auto object-contain"
+                        />
+                      </div>
+                      <label className="px-3 py-2 rounded-xl bg-cyan-600/30 border border-cyan-500 hover:bg-cyan-500/40 text-cyan-200 text-xs font-bold cursor-pointer flex items-center gap-1.5">
+                        <Upload className="w-3.5 h-3.5" /> Tải logo mới
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleSchoolLogoUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-3 border-t border-slate-700">
+                  <button
+                    onClick={() => {
+                      saveCurrentTeacherProfile();
+                      setSaveSuccessMessage('✓ Đã cập nhật thông tin hồ sơ giáo viên thành công!');
+                      setTimeout(() => setSaveSuccessMessage(''), 3000);
+                    }}
+                    className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs uppercase flex items-center gap-2 cursor-pointer shadow"
+                  >
+                    <Save className="w-4 h-4" /> LƯU THÔNG TIN HỒ SƠ
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ================= TAB 5: BẬT/TẮT BIỂU CẢM & ĐẾM NGƯỢC ================= */}
           {activeTab === 'challenges' && (
             <div className="space-y-6">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-800/50 border border-slate-700">
@@ -538,7 +1266,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                     onChange={(e) =>
                       setLocalSettings({ ...localSettings, countdownDuration: parseInt(e.target.value) })
                     }
-                    className="w-32 accent-cyan-400"
+                    className="w-32 accent-cyan-400 cursor-pointer"
                   />
                   <span className="font-bold text-cyan-300 text-sm w-12 text-right">
                     {localSettings.countdownDuration}s
@@ -548,17 +1276,16 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
 
               <div>
                 <h4 className="font-bold text-slate-100 text-sm sm:text-base mb-3">
-                  Danh sách 12 biểu cảm hỗ trợ (Bật/Tắt và chỉnh điểm chuẩn)
+                  Bật/Tắt các biểu cảm trong lượt chơi của lớp bạn:
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {Object.values(CHALLENGE_DEFINITIONS).map((ch) => {
                     const isEnabled = !!localSettings.enabledChallenges[ch.id];
-                    const currentScore = localSettings.requiredScores[ch.id] ?? ch.defaultScore;
-
                     return (
                       <div
                         key={ch.id}
-                        className={`p-3.5 rounded-2xl border transition flex items-center justify-between gap-3 ${
+                        onClick={() => toggleChallenge(ch.id)}
+                        className={`p-3.5 rounded-2xl border transition flex items-center justify-between gap-3 cursor-pointer ${
                           isEnabled
                             ? 'bg-slate-800/80 border-cyan-500/40'
                             : 'bg-slate-900/40 border-slate-800 opacity-60'
@@ -568,8 +1295,8 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                           <input
                             type="checkbox"
                             checked={isEnabled}
-                            onChange={() => toggleChallenge(ch.id)}
-                            className="w-5 h-5 accent-cyan-400 cursor-pointer rounded"
+                            onChange={() => {}}
+                            className="w-5 h-5 accent-cyan-400 cursor-pointer rounded pointer-events-none"
                           />
                           <div>
                             <div className="flex items-center gap-2">
@@ -580,18 +1307,9 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                           </div>
                         </div>
 
-                        {/* Required score adjustment */}
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-xs text-slate-400 font-semibold">Điểm:</span>
-                          <input
-                            type="number"
-                            min={20}
-                            max={100}
-                            value={currentScore}
-                            onChange={(e) => updateChallengeScore(ch.id, parseInt(e.target.value) || 60)}
-                            className="w-16 px-2 py-1 rounded-lg bg-slate-900 border border-slate-700 text-amber-300 text-center font-bold text-xs"
-                          />
-                        </div>
+                        <span className="text-xs font-mono text-amber-300 bg-slate-950 px-2 py-1 rounded-md border border-slate-700">
+                          {localSettings.requiredScores[ch.id] ?? ch.defaultScore}đ
+                        </span>
                       </div>
                     );
                   })}
@@ -599,225 +1317,37 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
               </div>
             </div>
           )}
-
-          {/* 2. QUESTIONS TAB */}
-          {activeTab === 'questions' && (
-            <div className="space-y-6">
-              {/* Question Sets Header */}
-              <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-slate-300">Bộ câu hỏi:</span>
-                  <select
-                    value={activeSetId}
-                    onChange={(e) => setActiveSetId(e.target.value)}
-                    className="px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-cyan-300 font-bold text-xs sm:text-sm outline-none"
-                  >
-                    {localQuestionSets.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.questions.length} câu)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleDownloadTemplate}
-                    className="px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-cyan-300 text-xs font-bold flex items-center gap-1.5"
-                  >
-                    <Download className="w-3.5 h-3.5" /> Tải tệp mẫu TXT
-                  </button>
-
-                  <button
-                    onClick={() => setShowImportModal(true)}
-                    className="px-3 py-1.5 rounded-xl bg-cyan-600/30 border border-cyan-500 hover:bg-cyan-500/40 text-cyan-200 text-xs font-bold flex items-center gap-1.5"
-                  >
-                    <Upload className="w-3.5 h-3.5" /> Nhập thêm câu hỏi
-                  </button>
-                </div>
-              </div>
-
-              {/* Questions List */}
-              <div className="space-y-3">
-                {currentSet?.questions.map((q, idx) => (
-                  <div
-                    key={q.id}
-                    className="p-4 rounded-2xl bg-slate-800/60 border border-slate-700 flex flex-col gap-2"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="font-bold text-sm text-slate-200">
-                        Câu {idx + 1}: {q.content}
-                      </span>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {q.isConfirmed ? (
-                          <span className="px-2 py-0.5 rounded-md bg-emerald-950 text-emerald-300 text-[10px] font-bold border border-emerald-800 flex items-center gap-1">
-                            <CheckCircle className="w-3 h-3" /> Đã xác nhận
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-md bg-amber-950 text-amber-300 text-[10px] font-bold border border-amber-800 flex items-center gap-1">
-                            <AlertCircle className="w-3 h-3" /> Cần giáo viên xác nhận
-                          </span>
-                        )}
-                        <button
-                          onClick={() => {
-                            if (currentSet.questions.length <= 1) return;
-                            setLocalQuestionSets((prev) =>
-                              prev.map((s) =>
-                                s.id === currentSet.id
-                                  ? { ...s, questions: s.questions.filter((item) => item.id !== q.id) }
-                                  : s
-                              )
-                            );
-                          }}
-                          className="text-slate-400 hover:text-red-400 p-1"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-xs text-slate-300">
-                      {q.options.map((opt, oIdx) => {
-                        const optKey = (['A', 'B', 'C', 'D'] as const)[oIdx];
-                        const isCorrect = optKey === q.correctAnswer;
-                        return (
-                          <div
-                            key={optKey}
-                            className={`p-2 rounded-lg border ${
-                              isCorrect
-                                ? 'bg-emerald-950/60 border-emerald-500 text-emerald-200 font-bold'
-                                : 'bg-slate-900 border-slate-800'
-                            }`}
-                          >
-                            {optKey}. {opt}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 3. PUZZLE IMAGE TAB */}
-          {activeTab === 'puzzle_image' && (
-            <div className="space-y-6">
-              <div className="p-4 rounded-2xl bg-slate-800/50 border border-slate-700">
-                <h4 className="font-bold text-slate-100 text-sm sm:text-base mb-1">
-                  Bức tranh bí ẩn hiện tại
-                </h4>
-                <p className="text-xs text-slate-400 mb-4">
-                  Ảnh được giữ nguyên tỉ lệ gốc tự nhiên, chia thành 9 mảnh ghép không biến dạng.
-                </p>
-
-                <div className="w-full max-w-md aspect-[4/3] rounded-2xl overflow-hidden border border-cyan-500/40 bg-slate-950 mb-4">
-                  <img
-                    src={localSettings.puzzleImageUrl}
-                    alt="Tranh bí ẩn"
-                    className="w-full h-full object-contain"
-                  />
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3">
-                  <label className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs uppercase cursor-pointer flex items-center gap-2 shadow-md">
-                    <Upload className="w-4 h-4" /> Tải ảnh mới từ máy tính
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handlePuzzleImageUpload}
-                      className="hidden"
-                    />
-                  </label>
-
-                  <button
-                    onClick={() => {
-                      setLocalSettings({
-                        ...localSettings,
-                        puzzleImageUrl: '/assets/default_puzzle.svg',
-                        puzzleImageNaturalWidth: 1200,
-                        puzzleImageNaturalHeight: 800
-                      });
-                    }}
-                    className="px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center gap-2"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" /> Dùng tranh STEM mặc định
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 4. LOGO TAB */}
-          {activeTab === 'logo' && (
-            <div className="space-y-6">
-              <div className="p-4 rounded-2xl bg-slate-800/50 border border-slate-700">
-                <h4 className="font-bold text-slate-100 text-sm sm:text-base mb-1">
-                  Logo nhà trường
-                </h4>
-                <p className="text-xs text-slate-400 mb-4">
-                  Logo hiển thị trên góc trái màn hình và giấy chứng nhận hoàn thành.
-                </p>
-
-                <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 inline-block mb-4">
-                  <img
-                    src={localSettings.schoolLogoUrl}
-                    alt="Logo trường"
-                    className="h-12 w-auto object-contain"
-                  />
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3">
-                  <label className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs uppercase cursor-pointer flex items-center gap-2 shadow-md">
-                    <Upload className="w-4 h-4" /> Tải logo trường mới
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleSchoolLogoUpload}
-                      className="hidden"
-                    />
-                  </label>
-
-                  <button
-                    onClick={() => {
-                      setLocalSettings({
-                        ...localSettings,
-                        schoolLogoUrl: '/assets/fpt_schools_logo.svg'
-                      });
-                    }}
-                    className="px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center gap-2"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" /> Dùng logo FPT Schools mặc định
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
 
-        {/* Footer actions */}
-        <div className="px-6 py-4 border-t border-slate-800 bg-slate-900 flex items-center justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 font-bold text-xs sm:text-sm"
-          >
-            Hủy bỏ
-          </button>
-          <button
-            onClick={handleSaveAll}
-            className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-xs sm:text-sm uppercase flex items-center gap-2 shadow-md cursor-pointer"
-          >
-            <Save className="w-4 h-4" /> LƯU THIẾT LẬP
-          </button>
+        {/* Footer Actions */}
+        <div className="px-6 py-4 border-t border-slate-800 bg-slate-900 flex items-center justify-between gap-3">
+          <span className="text-xs text-slate-400 hidden sm:inline">
+            Đang áp dụng cho tài khoản: <strong className="text-slate-200">{currentTeacher?.name}</strong>
+          </span>
+
+          <div className="flex items-center gap-3 ml-auto">
+            <button
+              onClick={onClose}
+              className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 font-bold text-xs sm:text-sm cursor-pointer"
+            >
+              Đóng
+            </button>
+            <button
+              onClick={handleSaveAll}
+              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-xs sm:text-sm uppercase flex items-center gap-2 shadow-md cursor-pointer transition"
+            >
+              <Save className="w-4 h-4" /> LƯU & ÁP DỤNG NGAY
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Text Import Modal */}
+      {/* MODAL: Nhập danh sách câu hỏi bằng tệp / Text */}
       {showImportModal && (
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/90 select-none">
           <div className="w-full max-w-2xl bg-slate-900 border-2 border-cyan-500/60 rounded-3xl p-6 shadow-2xl flex flex-col">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-cyan-300 text-base">Nhập danh sách câu hỏi</h3>
+              <h3 className="font-bold text-cyan-300 text-base">Tự đẩy danh sách câu hỏi (TXT)</h3>
               <button
                 onClick={() => setShowImportModal(false)}
                 className="text-slate-400 hover:text-white"
@@ -831,7 +1361,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
             <textarea
               value={importedText}
               onChange={(e) => setImportedText(e.target.value)}
-              placeholder={`Câu 1: ...\nA. ...\nB. ...\nC. ...\nD. ...\nĐáp án đúng: A\nGiải thích: ...`}
+              placeholder={`Câu 1: Câu hỏi về STEM...\nA. Đáp án A\nB. Đáp án B\nC. Đáp án C\nD. Đáp án D\nĐáp án đúng: A\nGiải thích: ...`}
               rows={10}
               className="w-full p-4 rounded-xl bg-slate-800 border border-slate-700 text-white font-mono text-xs outline-none focus:border-cyan-400 mb-4"
             />
@@ -844,9 +1374,183 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
               </button>
               <button
                 onClick={handleExecuteImport}
-                className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-black uppercase"
+                className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-black uppercase shadow cursor-pointer"
               >
-                Xác nhận thêm
+                Xác nhận thêm vào bộ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Thêm 1 câu hỏi thủ công */}
+      {showAddQuestionModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/90 select-none">
+          <div className="w-full max-w-xl bg-slate-900 border-2 border-amber-500/60 rounded-3xl p-6 shadow-2xl flex flex-col space-y-3.5">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+              <h3 className="font-bold text-amber-300 text-base">Thêm câu hỏi mới</h3>
+              <button
+                onClick={() => setShowAddQuestionModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-300 mb-1">Nội dung câu hỏi</label>
+              <textarea
+                value={newQContent}
+                onChange={(e) => setNewQContent(e.target.value)}
+                placeholder="Nhập nội dung câu hỏi..."
+                rows={2}
+                className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs outline-none focus:border-amber-400"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 mb-0.5">Đáp án A</label>
+                <input
+                  type="text"
+                  value={newQOptA}
+                  onChange={(e) => setNewQOptA(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs outline-none focus:border-amber-400"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 mb-0.5">Đáp án B</label>
+                <input
+                  type="text"
+                  value={newQOptB}
+                  onChange={(e) => setNewQOptB(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs outline-none focus:border-amber-400"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 mb-0.5">Đáp án C</label>
+                <input
+                  type="text"
+                  value={newQOptC}
+                  onChange={(e) => setNewQOptC(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs outline-none focus:border-amber-400"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 mb-0.5">Đáp án D</label>
+                <input
+                  type="text"
+                  value={newQOptD}
+                  onChange={(e) => setNewQOptD(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs outline-none focus:border-amber-400"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">Đáp án đúng</label>
+                <select
+                  value={newQCorrect}
+                  onChange={(e) => setNewQCorrect(e.target.value as any)}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-amber-300 font-bold text-xs outline-none"
+                >
+                  <option value="A">Đáp án A</option>
+                  <option value="B">Đáp án B</option>
+                  <option value="C">Đáp án C</option>
+                  <option value="D">Đáp án D</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">Giải thích (tùy chọn)</label>
+                <input
+                  type="text"
+                  value={newQExplain}
+                  onChange={(e) => setNewQExplain(e.target.value)}
+                  placeholder="Lý do vì sao đáp án đúng..."
+                  className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setShowAddQuestionModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleAddSingleQuestion}
+                className="px-5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black uppercase shadow"
+              >
+                Lưu câu hỏi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Tạo bộ câu hỏi mới */}
+      {showNewSetModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/90 select-none">
+          <div className="w-full max-w-md bg-slate-900 border-2 border-cyan-500/60 rounded-3xl p-6 shadow-2xl flex flex-col space-y-3.5">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+              <h3 className="font-bold text-cyan-300 text-base">Tạo bộ câu hỏi mới</h3>
+              <button
+                onClick={() => setShowNewSetModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-300 mb-1">Tên bộ câu hỏi</label>
+              <input
+                type="text"
+                value={newSetName}
+                onChange={(e) => setNewSetName(e.target.value)}
+                placeholder="Ví dụ: STEM Năng lượng tái tạo - Lớp 4"
+                className="w-full px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs outline-none focus:border-cyan-400"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">Môn học</label>
+                <input
+                  type="text"
+                  value={newSetSubject}
+                  onChange={(e) => setNewSetSubject(e.target.value)}
+                  placeholder="STEM / Tin học"
+                  className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">Khối lớp</label>
+                <input
+                  type="text"
+                  value={newSetGrade}
+                  onChange={(e) => setNewSetGrade(e.target.value)}
+                  placeholder="Khối 4 - Khối 5"
+                  className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setShowNewSetModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleCreateNewQuestionSet}
+                className="px-5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-black uppercase shadow"
+              >
+                Tạo bộ câu hỏi
               </button>
             </div>
           </div>

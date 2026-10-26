@@ -39,7 +39,28 @@ export interface QuestionSet {
   questions: Question[];
 }
 
+export interface TeacherAccount {
+  id: string;
+  username: string;
+  name: string;
+  title?: string;
+  schoolName: string;
+  password?: string;
+  avatarColor?: string;
+  puzzleImageUrl: string;
+  puzzleImageNaturalWidth: number;
+  puzzleImageNaturalHeight: number;
+  requiredScores: Record<ChallengeType, number>;
+  enabledChallenges: Record<ChallengeType, boolean>;
+  countdownDuration: number;
+  activeQuestionSetId: string;
+  questionSets: QuestionSet[];
+  schoolLogoUrl?: string;
+  updatedAt: number;
+}
+
 export interface AppSettings {
+  currentTeacherId?: string;
   countdownDuration: number;
   enabledChallenges: Record<ChallengeType, boolean>;
   randomChallenges: boolean;

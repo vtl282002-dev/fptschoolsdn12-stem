@@ -263,6 +263,8 @@ export default function App() {
           isMuted={isMuted}
           onToggleMute={handleToggleMute}
           schoolLogoUrl={settings.schoolLogoUrl}
+          teacherName={settings.teacherName}
+          schoolName={settings.schoolName}
         />
       )}
 
@@ -346,6 +348,30 @@ export default function App() {
           onSaveSettings={handleSaveSettings}
           onSaveQuestionSets={handleSaveQuestionSets}
           onClose={() => setShowSettingsModal(false)}
+          onTeacherChange={(t) => {
+            setSettings((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    currentTeacherId: t.id,
+                    teacherName: t.name,
+                    schoolName: t.schoolName,
+                    puzzleImageUrl: t.puzzleImageUrl,
+                    puzzleImageNaturalWidth: t.puzzleImageNaturalWidth,
+                    puzzleImageNaturalHeight: t.puzzleImageNaturalHeight,
+                    requiredScores: t.requiredScores,
+                    enabledChallenges: t.enabledChallenges,
+                    countdownDuration: t.countdownDuration,
+                    activeQuestionSetId: t.activeQuestionSetId,
+                    schoolLogoUrl: t.schoolLogoUrl || prev.schoolLogoUrl
+                  }
+                : null
+            );
+            if (t.questionSets && t.questionSets.length > 0) {
+              setQuestionSets(t.questionSets);
+              setActiveQuestionSetId(t.activeQuestionSetId || t.questionSets[0].id);
+            }
+          }}
         />
       )}
     </div>

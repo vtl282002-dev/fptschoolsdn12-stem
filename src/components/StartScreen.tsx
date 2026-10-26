@@ -19,6 +19,8 @@ interface StartScreenProps {
   isMuted: boolean;
   onToggleMute: () => void;
   schoolLogoUrl?: string;
+  teacherName?: string;
+  schoolName?: string;
 }
 
 export const StartScreen: React.FC<StartScreenProps> = ({
@@ -29,7 +31,9 @@ export const StartScreen: React.FC<StartScreenProps> = ({
   onStartGame,
   onOpenSettings,
   isMuted,
-  onToggleMute
+  onToggleMute,
+  teacherName,
+  schoolName
 }) => {
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -60,6 +64,25 @@ export const StartScreen: React.FC<StartScreenProps> = ({
         <div className="flex items-center">
           <FptSchoolsLogo size="md" />
         </div>
+
+        {/* Center: Teacher Account Badge */}
+        {teacherName && (
+          <button
+            onClick={() => {
+              audioManager.playClick();
+              onOpenSettings();
+            }}
+            className="hidden md:flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-blue-950/70 border border-cyan-400/40 text-cyan-200 hover:border-cyan-400 hover:bg-cyan-500/10 active:scale-95 text-xs cursor-pointer shadow-[0_0_12px_rgba(0,240,255,0.2)] transition"
+            title="Nhấn để đổi tài khoản giáo viên hoặc tùy chỉnh câu hỏi, hình ảnh, điểm"
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="font-medium text-slate-300">Giáo viên:</span>
+            <span className="font-bold text-amber-300">{teacherName}</span>
+            <span className="text-[10px] text-cyan-300/80 bg-cyan-950/80 px-2 py-0.5 rounded-full border border-cyan-500/30">
+              Cá nhân hóa
+            </span>
+          </button>
+        )}
 
         {/* Right: Round Translucent Blue Sound Toggle & Settings Buttons */}
         <div className="flex items-center gap-3">
