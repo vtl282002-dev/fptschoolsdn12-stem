@@ -8,6 +8,8 @@ import { Interactive3DCard } from './3d/Interactive3DCard';
 import { FptSchoolsLogo } from './FptSchoolsLogo';
 import { ResetConfirmModal } from './ResetConfirmModal';
 
+import { PuzzlePiece, ActiveGamePiece } from '../types';
+
 interface PuzzleBoardProps {
   imageUrl: string;
   imageNaturalWidth: number;
@@ -15,6 +17,9 @@ interface PuzzleBoardProps {
   placedPieceIds: number[];
   placementCredits: number;
   shuffledTrayOrder: number[];
+  pieces?: ActiveGamePiece[];
+  gameSessionId?: string;
+  imageVersion?: string;
   onPlacePieceSuccess: (pieceId: number) => void;
   onReturnToChallenge: () => void;
   onResetGame: () => void;
@@ -33,6 +38,9 @@ export const PuzzleBoard: React.FC<PuzzleBoardProps> = ({
   placedPieceIds,
   placementCredits,
   shuffledTrayOrder,
+  pieces,
+  gameSessionId,
+  imageVersion,
   onPlacePieceSuccess,
   onReturnToChallenge,
   onResetGame,
@@ -55,7 +63,37 @@ export const PuzzleBoard: React.FC<PuzzleBoardProps> = ({
     height: 400
   });
 
-  const aspectRatio = (imageNaturalWidth || 1200) / (imageNaturalHeight || 800);
+  const [detectedAspect, setDetectedAspect] = useState<number>(
+    (imageNaturalWidth || 1200) / (imageNaturalHeight || 800)
+  );
+
+  // Cache-busting token derived from imageVersion or imageUrl so SVG clipPaths and image tags never show stale graphics
+  const imageToken = React.useMemo(() => {
+    if (imageVersion) return imageVersion;
+    if (!imageUrl) return 'def';
+    let hash = 0;
+    const len = imageUrl.length;
+    const sample = len > 200 ? imageUrl.slice(0, 100) + imageUrl.slice(-100) : imageUrl;
+    for (let i = 0; i < sample.length; i++) {
+      hash = ((hash << 5) - hash) + sample.charCodeAt(i);
+      hash |= 0;
+    }
+    return Math.abs(hash).toString(36) + '_' + len;
+  }, [imageVersion, imageUrl]);
+
+  // Automatically detect actual image aspect ratio when imageUrl changes
+  useEffect(() => {
+    if (!imageUrl) return;
+    const img = new Image();
+    img.onload = () => {
+      if (img.naturalWidth && img.naturalHeight) {
+        setDetectedAspect(img.naturalWidth / img.naturalHeight);
+      }
+    };
+    img.src = imageUrl;
+  }, [imageUrl]);
+
+  const aspectRatio = detectedAspect || (imageNaturalWidth || 1200) / (imageNaturalHeight || 800);
 
   useEffect(() => {
     const updateSize = () => {
@@ -264,16 +302,18 @@ export const PuzzleBoard: React.FC<PuzzleBoardProps> = ({
           <div className="flex-1 overflow-y-auto grid grid-cols-3 md:grid-cols-2 lg:grid-cols-3 gap-2.5 p-1 content-start">
             {unplacedPieces.map((pieceId) => {
               const pieceConfig = PUZZLE_PIECES_CONFIG[pieceId];
+              const pieceObj = pieces?.find((p) => p.id === pieceId);
               const isSelected = selectedPieceId === pieceId;
               const isShaking = shakingPieceId === pieceId;
 
               const miniW = 84;
               const miniH = miniW / (pieceW / pieceH);
               const pathData = generateJigsawPath(miniW, miniH, pieceConfig);
+              const trayClipId = `tray-clip-${pieceId}-${imageToken}`;
 
               return (
                 <div
-                  key={pieceId}
+                  key={`tray-piece-${pieceId}-${imageToken}`}
                   draggable={placementCredits > 0}
                   onDragStart={(e) => {
                     e.dataTransfer.setData('text/plain', pieceId.toString());
@@ -294,38 +334,51 @@ export const PuzzleBoard: React.FC<PuzzleBoardProps> = ({
                       : 'bg-slate-800/80 hover:bg-slate-800 border-2 border-cyan-500/30 hover:border-cyan-400/60 shadow-lg'
                   } ${placementCredits <= 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
-                  <svg
-                    width={miniW}
-                    height={miniH}
-                    viewBox={`-${miniW * 0.25} -${miniH * 0.25} ${miniW * 1.5} ${miniH * 1.5}`}
-                    className="overflow-visible drop-shadow-[0_4px_8px_rgba(0,0,0,0.6)]"
-                  >
-                    <defs>
-                      <clipPath id={`tray-clip-${pieceId}`}>
-                        <path d={pathData} />
-                      </clipPath>
-                    </defs>
-
-                    {/* Jigsaw base with border */}
-                    <path
-                      d={pathData}
-                      fill="#1E293B"
-                      stroke={isSelected ? '#F59E0B' : '#38BDF8'}
-                      strokeWidth={isSelected ? '3' : '1.8'}
-                    />
-
-                    {/* Image mapped slice */}
-                    <g clipPath={`url(#tray-clip-${pieceId})`}>
-                      <image
-                        href={imageUrl}
-                        x={-pieceConfig.col * miniW}
-                        y={-pieceConfig.row * miniH}
-                        width={miniW * 3}
-                        height={miniH * 3}
-                        preserveAspectRatio="none"
+                  {pieceObj?.dataUrl ? (
+                    <div className="relative flex items-center justify-center p-1 pointer-events-none">
+                      <img
+                        key={`tray-slice-${pieceId}-${imageToken}`}
+                        src={pieceObj.dataUrl}
+                        alt={`Mảnh ${pieceId + 1}`}
+                        className="w-20 h-20 object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.6)]"
                       />
-                    </g>
-                  </svg>
+                    </div>
+                  ) : (
+                    <svg
+                      width={miniW}
+                      height={miniH}
+                      viewBox={`-${miniW * 0.25} -${miniH * 0.25} ${miniW * 1.5} ${miniH * 1.5}`}
+                      className="overflow-visible drop-shadow-[0_4px_8px_rgba(0,0,0,0.6)]"
+                    >
+                      <defs>
+                        <clipPath id={trayClipId}>
+                          <path d={pathData} />
+                        </clipPath>
+                      </defs>
+
+                      {/* Jigsaw base with border */}
+                      <path
+                        d={pathData}
+                        fill="#1E293B"
+                        stroke={isSelected ? '#F59E0B' : '#38BDF8'}
+                        strokeWidth={isSelected ? '3' : '1.8'}
+                      />
+
+                      {/* Image mapped slice */}
+                      <g clipPath={`url(#${trayClipId})`}>
+                        <image
+                          key={`tray-img-${pieceId}-${imageToken}`}
+                          href={imageUrl}
+                          xlinkHref={imageUrl}
+                          x={-pieceConfig.col * miniW}
+                          y={-pieceConfig.row * miniH}
+                          width={miniW * 3}
+                          height={miniH * 3}
+                          preserveAspectRatio="none"
+                        />
+                      </g>
+                    </svg>
+                  )}
                 </div>
               );
             })}
@@ -388,6 +441,7 @@ export const PuzzleBoard: React.FC<PuzzleBoardProps> = ({
               {/* If completed 9/9, reveal original image */}
               {isCompleted ? (
                 <img
+                  key={`completed-${imageToken}`}
                   src={imageUrl}
                   alt="Hoàn thành tranh bí ẩn"
                   className="w-full h-full object-contain animate-in fade-in duration-500 shadow-2xl"
@@ -403,7 +457,7 @@ export const PuzzleBoard: React.FC<PuzzleBoardProps> = ({
                     {PUZZLE_PIECES_CONFIG.map((piece) => {
                       const path = generateJigsawPath(pieceW, pieceH, piece);
                       return (
-                        <clipPath key={`clip-${piece.id}`} id={`piece-clip-${piece.id}`}>
+                        <clipPath key={`clip-${piece.id}-${imageToken}`} id={`piece-clip-${piece.id}-${imageToken}`}>
                           <path d={path} />
                         </clipPath>
                       );
@@ -412,16 +466,18 @@ export const PuzzleBoard: React.FC<PuzzleBoardProps> = ({
 
                   {/* 3x3 Board Slots */}
                   {PUZZLE_PIECES_CONFIG.map((piece) => {
+                    const pieceObj = pieces?.find((p) => p.id === piece.id);
                     const isPlaced = placedPieceIds.includes(piece.id);
                     const isWrong = wrongSlotId === piece.id;
                     const isJustPlaced = lastPlacedPieceId === piece.id;
                     const pathData = generateJigsawPath(pieceW, pieceH, piece);
                     const slotX = piece.col * pieceW;
                     const slotY = piece.row * pieceH;
+                    const pieceClipId = `piece-clip-${piece.id}-${imageToken}`;
 
                     return (
                       <g
-                        key={piece.id}
+                        key={`slot-${piece.id}-${imageToken}`}
                         transform={`translate(${slotX}, ${slotY})`}
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => {
@@ -461,16 +517,31 @@ export const PuzzleBoard: React.FC<PuzzleBoardProps> = ({
 
                         {/* Placed image piece with subtle bevel shadow */}
                         {isPlaced && (
-                          <g clipPath={`url(#piece-clip-${piece.id})`}>
+                          pieceObj?.dataUrl ? (
                             <image
-                              href={imageUrl}
-                              x={-piece.col * pieceW}
-                              y={-piece.row * pieceH}
-                              width={boardDimensions.width}
-                              height={boardDimensions.height}
+                              key={`placed-slice-${piece.id}-${imageToken}`}
+                              href={pieceObj.dataUrl}
+                              xlinkHref={pieceObj.dataUrl}
+                              x={-pieceW * 0.25}
+                              y={-pieceH * 0.25}
+                              width={pieceW * 1.5}
+                              height={pieceH * 1.5}
                               preserveAspectRatio="none"
                             />
-                          </g>
+                          ) : (
+                            <g clipPath={`url(#${pieceClipId})`}>
+                              <image
+                                key={`placed-img-${piece.id}-${imageToken}`}
+                                href={imageUrl}
+                                xlinkHref={imageUrl}
+                                x={-piece.col * pieceW}
+                                y={-piece.row * pieceH}
+                                width={boardDimensions.width}
+                                height={boardDimensions.height}
+                                preserveAspectRatio="none"
+                              />
+                            </g>
+                          )
                         )}
                       </g>
                     );

@@ -3,7 +3,15 @@ import { ALL_CHALLENGE_KEYS, CHALLENGE_DEFINITIONS } from '../data/challenges';
 import { DEFAULT_QUESTION_SETS } from '../data/defaultQuestions';
 
 const DB_NAME = 'FacePuzzleSTEM_DB';
-const DB_VERSION = 2;
+const DB_VERSION = 4;
+
+export interface StoredPuzzleImage {
+  id: string; // 'puzzle_' + teacherId or 'active_puzzle'
+  dataUrl: string;
+  width: number;
+  height: number;
+  updatedAt: number;
+}
 
 export const DEFAULT_REQUIRED_SCORES: Record<ChallengeType, number> = {
   mouth_pucker: 50,
@@ -91,6 +99,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 class IndexedDBService {
   private dbPromise: Promise<IDBDatabase> | null = null;
+  private imageMemoryCache: Map<string, { dataUrl: string; width: number; height: number }> = new Map();
 
   private getDB(): Promise<IDBDatabase> {
     if (this.dbPromise) return this.dbPromise;
@@ -114,6 +123,9 @@ class IndexedDBService {
         if (!db.objectStoreNames.contains('teachers')) {
           db.createObjectStore('teachers', { keyPath: 'id' });
         }
+        if (!db.objectStoreNames.contains('puzzleImages')) {
+          db.createObjectStore('puzzleImages', { keyPath: 'id' });
+        }
       };
 
       request.onsuccess = () => {
@@ -128,99 +140,319 @@ class IndexedDBService {
     return this.dbPromise;
   }
 
+  // ================= DEDICATED PUZZLE IMAGE STORAGE =================
+
+  async deletePuzzleImage(teacherId?: string): Promise<void> {
+    const targetId = teacherId || this.getActiveTeacherId();
+    this.imageMemoryCache.delete(targetId);
+    this.imageMemoryCache.delete('active');
+    try {
+      sessionStorage.removeItem(`fpt_stem_puzzle_img_${targetId}`);
+      sessionStorage.removeItem('fpt_stem_puzzle_img_active');
+      sessionStorage.removeItem(`fpt_stem_puzzle_dim_${targetId}`);
+    } catch {}
+    try {
+      const db = await this.getDB();
+      const tx = db.transaction('puzzleImages', 'readwrite');
+      const store = tx.objectStore('puzzleImages');
+      store.delete(`puzzle_${targetId}`);
+      store.delete('active_puzzle');
+    } catch {}
+  }
+
+  async savePuzzleImage(
+    teacherId: string,
+    dataUrl: string,
+    width: number = 1200,
+    height: number = 800
+  ): Promise<void> {
+    if (!dataUrl || dataUrl === '/assets/default_puzzle.svg') {
+      await this.deletePuzzleImage(teacherId);
+      return;
+    }
+
+    // 1. Update in-memory cache
+    this.imageMemoryCache.set(teacherId, { dataUrl, width, height });
+    this.imageMemoryCache.set('active', { dataUrl, width, height });
+
+    // 2. Try sessionStorage fallback (for session persistence even if IndexedDB is slow)
+    try {
+      if (dataUrl.length < 2500000) {
+        sessionStorage.setItem(`fpt_stem_puzzle_img_${teacherId}`, dataUrl);
+        sessionStorage.setItem('fpt_stem_puzzle_img_active', dataUrl);
+        sessionStorage.setItem(`fpt_stem_puzzle_dim_${teacherId}`, JSON.stringify({ width, height }));
+      }
+    } catch {}
+
+    // 3. Persist in IndexedDB puzzleImages object store
+    try {
+      const db = await this.getDB();
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction('puzzleImages', 'readwrite');
+        const store = tx.objectStore('puzzleImages');
+
+        const record: StoredPuzzleImage = {
+          id: `puzzle_${teacherId}`,
+          dataUrl,
+          width,
+          height,
+          updatedAt: Date.now()
+        };
+        store.put(record);
+
+        // Also save as active general custom image
+        store.put({
+          id: 'active_puzzle',
+          dataUrl,
+          width,
+          height,
+          updatedAt: Date.now()
+        });
+
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch (err) {
+      console.warn('Could not save to puzzleImages store in IndexedDB:', err);
+    }
+  }
+
+  async getPuzzleImage(
+    teacherId?: string
+  ): Promise<{ dataUrl: string; width: number; height: number } | null> {
+    const targetId = teacherId || this.getActiveTeacherId();
+
+    // 1. Check in-memory cache
+    if (this.imageMemoryCache.has(targetId)) {
+      return this.imageMemoryCache.get(targetId)!;
+    }
+    if (!teacherId && this.imageMemoryCache.has('active')) {
+      return this.imageMemoryCache.get('active')!;
+    }
+
+    // 2. Check IndexedDB
+    try {
+      const db = await this.getDB();
+      const record = await new Promise<StoredPuzzleImage | null>((resolve) => {
+        const tx = db.transaction('puzzleImages', 'readonly');
+        const store = tx.objectStore('puzzleImages');
+
+        const req = store.get(`puzzle_${targetId}`);
+        req.onsuccess = () => {
+          if (req.result && req.result.dataUrl) {
+            resolve(req.result);
+          } else if (!teacherId) {
+            // Only fallback to active_puzzle if teacherId wasn't specified
+            const reqActive = store.get('active_puzzle');
+            reqActive.onsuccess = () => resolve(reqActive.result || null);
+            reqActive.onerror = () => resolve(null);
+          } else {
+            resolve(null);
+          }
+        };
+        req.onerror = () => resolve(null);
+      });
+
+      if (record && record.dataUrl) {
+        this.imageMemoryCache.set(targetId, {
+          dataUrl: record.dataUrl,
+          width: record.width || 1200,
+          height: record.height || 800
+        });
+        return {
+          dataUrl: record.dataUrl,
+          width: record.width || 1200,
+          height: record.height || 800
+        };
+      }
+    } catch {
+      // ignore
+    }
+
+    // 3. Check sessionStorage fallback
+    try {
+      const stored =
+        sessionStorage.getItem(`fpt_stem_puzzle_img_${targetId}`) ||
+        (!teacherId ? sessionStorage.getItem('fpt_stem_puzzle_img_active') : null);
+      if (stored) {
+        let width = 1200;
+        let height = 800;
+        try {
+          const dim = sessionStorage.getItem(`fpt_stem_puzzle_dim_${targetId}`);
+          if (dim) {
+            const parsed = JSON.parse(dim);
+            width = parsed.width || width;
+            height = parsed.height || height;
+          }
+        } catch {}
+        this.imageMemoryCache.set(targetId, { dataUrl: stored, width, height });
+        return { dataUrl: stored, width, height };
+      }
+    } catch {}
+
+    return null;
+  }
+
   // ================= TEACHER PERSONALIZATION =================
 
   async getTeachers(): Promise<TeacherAccount[]> {
+    let list: TeacherAccount[] = [];
+
     // 1. Try IndexedDB
     try {
       const db = await this.getDB();
-      const list = await new Promise<TeacherAccount[]>((resolve) => {
+      list = await new Promise<TeacherAccount[]>((resolve) => {
         const tx = db.transaction('teachers', 'readonly');
         const store = tx.objectStore('teachers');
         const req = store.getAll();
         req.onsuccess = () => resolve(req.result || []);
         req.onerror = () => resolve([]);
       });
-
-      if (list && list.length > 0) {
-        return list;
-      }
     } catch {
       // ignore
     }
 
-    // 2. Try localStorage
-    try {
-      const local = localStorage.getItem('fpt_stem_teachers');
-      if (local) {
-        const parsed = JSON.parse(local);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+    // 2. Try localStorage if IndexedDB had no records
+    if (!list || list.length === 0) {
+      try {
+        const local = localStorage.getItem('fpt_stem_teachers');
+        if (local) {
+          const parsed = JSON.parse(local);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            list = parsed;
+          }
         }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
     }
 
-    // 3. Seed default teachers
-    await this.seedDefaultTeachers();
-    return DEFAULT_TEACHERS;
+    // 3. If still empty, seed defaults
+    if (!list || list.length === 0) {
+      await this.seedDefaultTeachers();
+      list = [...DEFAULT_TEACHERS];
+    }
+
+    // 4. Hydrate custom images for each teacher
+    for (const teacher of list) {
+      const customImg = await this.getPuzzleImage(teacher.id);
+      if (customImg && customImg.dataUrl) {
+        teacher.puzzleImageUrl = customImg.dataUrl;
+        teacher.puzzleImageNaturalWidth = customImg.width;
+        teacher.puzzleImageNaturalHeight = customImg.height;
+      }
+    }
+
+    return list;
   }
 
   private async seedDefaultTeachers(): Promise<void> {
     try {
-      localStorage.setItem('fpt_stem_teachers', JSON.stringify(DEFAULT_TEACHERS));
       const db = await this.getDB();
-      const tx = db.transaction('teachers', 'readwrite');
-      const store = tx.objectStore('teachers');
-      for (const t of DEFAULT_TEACHERS) {
-        store.put(t);
-      }
+      await new Promise<void>((resolve) => {
+        const tx = db.transaction('teachers', 'readwrite');
+        const store = tx.objectStore('teachers');
+        for (const t of DEFAULT_TEACHERS) {
+          store.put(t);
+        }
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      });
     } catch {
       // fallback handled
     }
+
+    try {
+      localStorage.setItem('fpt_stem_teachers', JSON.stringify(DEFAULT_TEACHERS));
+    } catch {}
   }
 
   async getTeacher(id: string): Promise<TeacherAccount | null> {
     const list = await this.getTeachers();
-    return list.find((t) => t.id === id) || null;
+    const found = list.find((t) => t.id === id);
+    if (!found) return null;
+
+    const customImg = await this.getPuzzleImage(id);
+    if (customImg && customImg.dataUrl) {
+      found.puzzleImageUrl = customImg.dataUrl;
+      found.puzzleImageNaturalWidth = customImg.width;
+      found.puzzleImageNaturalHeight = customImg.height;
+    }
+    return found;
   }
 
   async saveTeacher(teacher: TeacherAccount): Promise<void> {
-    const list = await this.getTeachers();
-    const idx = list.findIndex((t) => t.id === teacher.id);
-    let updated: TeacherAccount[];
-    if (idx >= 0) {
-      updated = [...list];
-      updated[idx] = { ...teacher, updatedAt: Date.now() };
-    } else {
-      updated = [...list, { ...teacher, updatedAt: Date.now() }];
+    const updatedTeacher: TeacherAccount = { ...teacher, updatedAt: Date.now() };
+
+    // 1. If teacher has a custom puzzle image, persist in dedicated puzzleImages store
+    if (
+      updatedTeacher.puzzleImageUrl &&
+      (updatedTeacher.puzzleImageUrl.startsWith('data:') ||
+        updatedTeacher.puzzleImageUrl.startsWith('blob:') ||
+        updatedTeacher.puzzleImageUrl.startsWith('http'))
+    ) {
+      await this.savePuzzleImage(
+        updatedTeacher.id,
+        updatedTeacher.puzzleImageUrl,
+        updatedTeacher.puzzleImageNaturalWidth || 1200,
+        updatedTeacher.puzzleImageNaturalHeight || 800
+      );
+    } else if (updatedTeacher.puzzleImageUrl === '/assets/default_puzzle.svg') {
+      await this.deletePuzzleImage(updatedTeacher.id);
     }
 
-    try {
-      localStorage.setItem('fpt_stem_teachers', JSON.stringify(updated));
-    } catch {}
-
+    // 2. Persist in IndexedDB teachers store and await completion
     try {
       const db = await this.getDB();
-      const tx = db.transaction('teachers', 'readwrite');
-      const store = tx.objectStore('teachers');
-      store.put({ ...teacher, updatedAt: Date.now() });
-    } catch {}
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction('teachers', 'readwrite');
+        const store = tx.objectStore('teachers');
+        store.put(updatedTeacher);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch (err) {
+      console.warn('IndexedDB saveTeacher error:', err);
+    }
+
+    // 3. Safe localStorage backup (sanitize large data URL to avoid QuotaExceededError)
+    try {
+      const rawList = await this.getTeachers();
+      const idx = rawList.findIndex((t) => t.id === teacher.id);
+      let updatedList: TeacherAccount[];
+      if (idx >= 0) {
+        updatedList = [...rawList];
+        updatedList[idx] = updatedTeacher;
+      } else {
+        updatedList = [...rawList, updatedTeacher];
+      }
+
+      // Safe clone for localStorage: replace massive data URLs with pointer
+      const safeList = updatedList.map((t) => {
+        if (t.puzzleImageUrl && t.puzzleImageUrl.length > 150000) {
+          return { ...t, puzzleImageUrl: `indexeddb:puzzle_${t.id}` };
+        }
+        return t;
+      });
+      localStorage.setItem('fpt_stem_teachers', JSON.stringify(safeList));
+    } catch (e) {
+      console.warn('localStorage quota handled in saveTeacher:', e);
+    }
   }
 
   async deleteTeacher(id: string): Promise<void> {
     const list = await this.getTeachers();
     const updated = list.filter((t) => t.id !== id);
-    try {
-      localStorage.setItem('fpt_stem_teachers', JSON.stringify(updated));
-    } catch {}
 
     try {
       const db = await this.getDB();
       const tx = db.transaction('teachers', 'readwrite');
       const store = tx.objectStore('teachers');
       store.delete(id);
+    } catch {}
+
+    try {
+      localStorage.setItem('fpt_stem_teachers', JSON.stringify(updated));
     } catch {}
   }
 
@@ -241,9 +473,20 @@ class IndexedDBService {
   async getActiveTeacher(): Promise<TeacherAccount> {
     const activeId = this.getActiveTeacherId();
     const teachers = await this.getTeachers();
-    const found = teachers.find((t) => t.id === activeId);
-    if (found) return found;
-    return teachers[0] || DEFAULT_TEACHERS[0];
+    let found = teachers.find((t) => t.id === activeId);
+    if (!found) {
+      found = teachers[0] || DEFAULT_TEACHERS[0];
+    }
+
+    // Ensure custom image is hydrated
+    const customImg = await this.getPuzzleImage(found.id);
+    if (customImg && customImg.dataUrl) {
+      found.puzzleImageUrl = customImg.dataUrl;
+      found.puzzleImageNaturalWidth = customImg.width;
+      found.puzzleImageNaturalHeight = customImg.height;
+    }
+
+    return found;
   }
 
   // ================= SETTINGS =================
@@ -251,6 +494,7 @@ class IndexedDBService {
   async getSettings(): Promise<AppSettings> {
     // Look up active teacher's personalized settings
     const activeTeacher = await this.getActiveTeacher();
+    const customImg = await this.getPuzzleImage(activeTeacher.id);
 
     const normalizeScores = (scores: Record<string, number> = {}) => {
       const merged = {
@@ -258,15 +502,12 @@ class IndexedDBService {
         ...(activeTeacher.requiredScores || {}),
         ...scores
       };
-      // Enforce 50 points target score for mouth_pucker if needed
       if (!merged.mouth_pucker || merged.mouth_pucker === 100 || merged.mouth_pucker > 50) {
         merged.mouth_pucker = 50;
       }
-      // Enforce 50 points target score for cheek_puff
       if (!merged.cheek_puff || merged.cheek_puff === 70 || merged.cheek_puff > 50) {
         merged.cheek_puff = 50;
       }
-      // Enforce 20 points target score for wink_left and wink_right
       if (!merged.wink_left || merged.wink_left > 20) {
         merged.wink_left = 20;
       }
@@ -276,14 +517,31 @@ class IndexedDBService {
       return merged;
     };
 
+    // Determine the definitive puzzle image URL without reverting custom images
+    let effectiveImageUrl = DEFAULT_SETTINGS.puzzleImageUrl;
+    if (customImg?.dataUrl && customImg.dataUrl !== '/assets/default_puzzle.svg') {
+      effectiveImageUrl = customImg.dataUrl;
+    } else if (
+      activeTeacher.puzzleImageUrl &&
+      !activeTeacher.puzzleImageUrl.startsWith('indexeddb:') &&
+      activeTeacher.puzzleImageUrl !== '/assets/default_puzzle.svg'
+    ) {
+      effectiveImageUrl = activeTeacher.puzzleImageUrl;
+    }
+
+    const effectiveWidth =
+      customImg?.width || activeTeacher.puzzleImageNaturalWidth || 1200;
+    const effectiveHeight =
+      customImg?.height || activeTeacher.puzzleImageNaturalHeight || 800;
+
     const baseSettings: AppSettings = {
       ...DEFAULT_SETTINGS,
       currentTeacherId: activeTeacher.id,
       teacherName: activeTeacher.name,
       schoolName: activeTeacher.schoolName,
-      puzzleImageUrl: activeTeacher.puzzleImageUrl || DEFAULT_SETTINGS.puzzleImageUrl,
-      puzzleImageNaturalWidth: activeTeacher.puzzleImageNaturalWidth || 1200,
-      puzzleImageNaturalHeight: activeTeacher.puzzleImageNaturalHeight || 800,
+      puzzleImageUrl: effectiveImageUrl,
+      puzzleImageNaturalWidth: effectiveWidth,
+      puzzleImageNaturalHeight: effectiveHeight,
       requiredScores: normalizeScores(activeTeacher.requiredScores),
       enabledChallenges: activeTeacher.enabledChallenges || DEFAULT_SETTINGS.enabledChallenges,
       countdownDuration: activeTeacher.countdownDuration || 3,
@@ -299,13 +557,27 @@ class IndexedDBService {
         const req = store.get('app_settings');
         req.onsuccess = () => {
           if (req.result) {
+            const dbSettings = req.result;
+            let finalImageUrl = effectiveImageUrl;
+            if (
+              effectiveImageUrl === DEFAULT_SETTINGS.puzzleImageUrl &&
+              dbSettings.puzzleImageUrl &&
+              !dbSettings.puzzleImageUrl.startsWith('indexeddb:') &&
+              dbSettings.puzzleImageUrl !== '/assets/default_puzzle.svg'
+            ) {
+              finalImageUrl = dbSettings.puzzleImageUrl;
+            }
+
             resolve({
               ...baseSettings,
-              ...req.result,
+              ...dbSettings,
+              currentTeacherId: activeTeacher.id,
               teacherName: activeTeacher.name,
               schoolName: activeTeacher.schoolName,
-              puzzleImageUrl: activeTeacher.puzzleImageUrl || req.result.puzzleImageUrl,
-              requiredScores: normalizeScores(req.result.requiredScores)
+              puzzleImageUrl: finalImageUrl,
+              puzzleImageNaturalWidth: effectiveWidth,
+              puzzleImageNaturalHeight: effectiveHeight,
+              requiredScores: normalizeScores(dbSettings.requiredScores)
             });
           } else {
             resolve(baseSettings);
@@ -319,16 +591,72 @@ class IndexedDBService {
   }
 
   async saveSettings(settings: AppSettings): Promise<void> {
+    const currentTeacherId = settings.currentTeacherId || this.getActiveTeacherId();
+
+    // 1. If settings contains a custom puzzle image, save to dedicated puzzleImages store
+    if (
+      settings.puzzleImageUrl &&
+      (settings.puzzleImageUrl.startsWith('data:') ||
+        settings.puzzleImageUrl.startsWith('blob:') ||
+        settings.puzzleImageUrl.startsWith('http'))
+    ) {
+      await this.savePuzzleImage(
+        currentTeacherId,
+        settings.puzzleImageUrl,
+        settings.puzzleImageNaturalWidth || 1200,
+        settings.puzzleImageNaturalHeight || 800
+      );
+    } else if (settings.puzzleImageUrl === '/assets/default_puzzle.svg') {
+      await this.deletePuzzleImage(currentTeacherId);
+    }
+
+    // 2. Persist in IndexedDB settings and update teacher record atomically
     try {
-      localStorage.setItem('app_settings', JSON.stringify(settings));
+      const db = await this.getDB();
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(['settings', 'teachers'], 'readwrite');
+        const store = tx.objectStore('settings');
+        store.put(settings, 'app_settings');
+
+        const teacherStore = tx.objectStore('teachers');
+        const getReq = teacherStore.get(currentTeacherId);
+        getReq.onsuccess = () => {
+          if (getReq.result) {
+            const teacher = getReq.result;
+            teacher.puzzleImageUrl = settings.puzzleImageUrl;
+            teacher.puzzleImageNaturalWidth = settings.puzzleImageNaturalWidth;
+            teacher.puzzleImageNaturalHeight = settings.puzzleImageNaturalHeight;
+            teacher.requiredScores = settings.requiredScores;
+            teacher.enabledChallenges = settings.enabledChallenges;
+            teacher.countdownDuration = settings.countdownDuration;
+            teacher.schoolName = settings.schoolName;
+            teacher.name = settings.teacherName;
+            teacher.updatedAt = Date.now();
+            teacherStore.put(teacher);
+          }
+        };
+
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch (err) {
+      console.warn('IndexedDB saveSettings error:', err);
+    }
+
+    // 3. Safe localStorage backup (safe against QuotaExceededError)
+    try {
       if (settings.requiredScores) {
         localStorage.setItem('fpt_stem_challenge_scores', JSON.stringify(settings.requiredScores));
       }
-      const db = await this.getDB();
-      const tx = db.transaction('settings', 'readwrite');
-      const store = tx.objectStore('settings');
-      store.put(settings, 'app_settings');
-    } catch {}
+
+      const safeSettings = { ...settings };
+      if (safeSettings.puzzleImageUrl && safeSettings.puzzleImageUrl.length > 150000) {
+        safeSettings.puzzleImageUrl = `indexeddb:puzzle_${currentTeacherId}`;
+      }
+      localStorage.setItem('app_settings', JSON.stringify(safeSettings));
+    } catch (err) {
+      console.warn('localStorage quota handled in saveSettings:', err);
+    }
   }
 
   // ================= QUESTION SETS =================

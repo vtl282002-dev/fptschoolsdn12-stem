@@ -25,6 +25,7 @@ import { CHALLENGE_DEFINITIONS } from '../data/challenges';
 import { QuestionImporter } from '../services/QuestionImporter';
 import { audioManager } from '../services/AudioManager';
 import { indexedDBService, DEFAULT_REQUIRED_SCORES } from '../services/IndexedDBService';
+import { ImageOptimizer } from '../services/ImageOptimizer';
 
 interface TeacherSettingsModalProps {
   settings: GameSettings;
@@ -33,6 +34,7 @@ interface TeacherSettingsModalProps {
   onSaveQuestionSets: (sets: QuestionSet[], activeSetId: string) => void;
   onClose: () => void;
   onTeacherChange?: (teacher: TeacherAccount) => void;
+  onConfirmStartNewGame?: (newSettings: GameSettings, newSets: QuestionSet[], activeSetId: string) => void;
 }
 
 export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
@@ -41,13 +43,23 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
   onSaveSettings,
   onSaveQuestionSets,
   onClose,
-  onTeacherChange
+  onTeacherChange,
+  onConfirmStartNewGame
 }) => {
   // Teacher Accounts state
   const [teachers, setTeachers] = useState<TeacherAccount[]>([]);
   const [currentTeacher, setCurrentTeacher] = useState<TeacherAccount | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginMode, setLoginMode] = useState<'select' | 'register'>('select');
+
+  // Confirmation modal to start new game with new settings & image & question set
+  const [showNewGameConfirmModal, setShowNewGameConfirmModal] = useState(false);
+  const [savedSnapshot, setSavedSnapshot] = useState<{
+    mergedSettings: GameSettings;
+    targetSets: QuestionSet[];
+    targetSetId: string;
+  } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Login form state
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>('');
@@ -215,7 +227,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     customQuestionSets?: QuestionSet[],
     customActiveSetId?: string
   ) => {
-    if (!currentTeacher) return;
+    if (!currentTeacher) return null;
 
     const mergedSettings: GameSettings = {
       ...localSettings,
@@ -255,15 +267,59 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     if (onTeacherChange) {
       onTeacherChange(updatedTeacher);
     }
+
+    return { mergedSettings, targetSets, targetSetId, updatedTeacher };
   };
 
-  // Save all and close
+  // Step 1: User clicks save -> save asynchronously first, then show confirmation dialog
   const handleSaveAll = async () => {
+    if (isSaving) return;
     audioManager.playClick();
-    await saveCurrentTeacherProfile();
+    setIsSaving(true);
+    setSaveSuccessMessage('Đang lưu cấu hình...');
+
     try {
-      localStorage.setItem('fpt_stem_challenge_scores', JSON.stringify(localSettings.requiredScores));
-    } catch {}
+      const result = await saveCurrentTeacherProfile();
+      if (result) {
+        setSavedSnapshot({
+          mergedSettings: result.mergedSettings,
+          targetSets: result.targetSets,
+          targetSetId: result.targetSetId
+        });
+        try {
+          localStorage.setItem('fpt_stem_challenge_scores', JSON.stringify(localSettings.requiredScores));
+        } catch {}
+        setSaveSuccessMessage('✓ Cài đặt đã được lưu thành công!');
+        setShowNewGameConfirmModal(true);
+      }
+    } catch (err) {
+      console.error('Lỗi khi lưu cài đặt:', err);
+      setSaveSuccessMessage('⚠️ Không thể lưu cài đặt. Vui lòng thử lại.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Step 3: User confirmed "OK – Bắt đầu ván mới"
+  const handleConfirmStartNewGame = () => {
+    audioManager.playScoreTargetReached();
+    const target = savedSnapshot || {
+      mergedSettings: localSettings,
+      targetSets: localQuestionSets,
+      targetSetId: activeSetId
+    };
+
+    if (onConfirmStartNewGame) {
+      onConfirmStartNewGame(target.mergedSettings, target.targetSets, target.targetSetId);
+    }
+    setShowNewGameConfirmModal(false);
+    onClose();
+  };
+
+  // Step 2 choice: User clicked "Để sau" -> do NOT start new game, keep current game
+  const handleSaveWithoutRestart = () => {
+    audioManager.playClick();
+    setShowNewGameConfirmModal(false);
     onClose();
   };
 
@@ -344,35 +400,49 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     });
   };
 
-  // Handle puzzle image file upload
-  const handlePuzzleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle puzzle image file upload with client-side optimization & instant persistence
+  const handlePuzzleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const url = event.target?.result as string;
-      const img = new Image();
-      img.onload = () => {
-        const newWidth = img.naturalWidth || 1200;
-        const newHeight = img.naturalHeight || 800;
-        setLocalSettings((prev) => ({
-          ...prev,
-          puzzleImageUrl: url,
-          puzzleImageNaturalWidth: newWidth,
-          puzzleImageNaturalHeight: newHeight
-        }));
-        saveCurrentTeacherProfile({
-          puzzleImageUrl: url,
-          puzzleImageNaturalWidth: newWidth,
-          puzzleImageNaturalHeight: newHeight
-        });
-        setSaveSuccessMessage('✓ Đã cập nhật ảnh tranh bí ẩn mới cho tài khoản của bạn!');
-        setTimeout(() => setSaveSuccessMessage(''), 4000);
-      };
-      img.src = url;
-    };
-    reader.readAsDataURL(file);
+    try {
+      setSaveSuccessMessage('Đang tối ưu hóa hình ảnh tranh ghép...');
+      const optimized = await ImageOptimizer.optimize(file, 1280, 0.88);
+
+      setLocalSettings((prev) => ({
+        ...prev,
+        puzzleImageUrl: optimized.dataUrl,
+        puzzleImageNaturalWidth: optimized.width,
+        puzzleImageNaturalHeight: optimized.height
+      }));
+
+      // Immediately save image to dedicated puzzle store
+      const teacherId = currentTeacher?.id || 'teacher_thao';
+      await indexedDBService.savePuzzleImage(
+        teacherId,
+        optimized.dataUrl,
+        optimized.width,
+        optimized.height
+      );
+
+      // Save teacher profile with optimized image
+      await saveCurrentTeacherProfile({
+        puzzleImageUrl: optimized.dataUrl,
+        puzzleImageNaturalWidth: optimized.width,
+        puzzleImageNaturalHeight: optimized.height
+      });
+
+      audioManager.playScoreTargetReached();
+      setSaveSuccessMessage('✓ Đã cập nhật và lưu hình ảnh tranh bí ẩn mới thành công!');
+      setTimeout(() => setSaveSuccessMessage(''), 4500);
+    } catch (err) {
+      console.error('Lỗi khi tải ảnh tranh ghép:', err);
+      setSaveSuccessMessage('⚠️ Không thể tải ảnh. Vui lòng thử một ảnh khác.');
+      setTimeout(() => setSaveSuccessMessage(''), 4000);
+    } finally {
+      // Clear input so same file can be re-selected if desired
+      e.target.value = '';
+    }
   };
 
   // Handle school logo upload
@@ -1140,26 +1210,37 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                     Kích thước gốc: {localSettings.puzzleImageNaturalWidth} × {localSettings.puzzleImageNaturalHeight} px
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2.5">
                     <button
-                      onClick={() => {
+                      onClick={async () => {
+                        const defaultImg = '/assets/default_puzzle.svg';
                         setLocalSettings({
                           ...localSettings,
-                          puzzleImageUrl: '/assets/default_puzzle.svg',
+                          puzzleImageUrl: defaultImg,
                           puzzleImageNaturalWidth: 1200,
                           puzzleImageNaturalHeight: 800
                         });
-                        saveCurrentTeacherProfile({
-                          puzzleImageUrl: '/assets/default_puzzle.svg',
+                        if (currentTeacher?.id) {
+                          await indexedDBService.deletePuzzleImage(currentTeacher.id);
+                        }
+                        await saveCurrentTeacherProfile({
+                          puzzleImageUrl: defaultImg,
                           puzzleImageNaturalWidth: 1200,
                           puzzleImageNaturalHeight: 800
                         });
                         setSaveSuccessMessage('✓ Đã chuyển về tranh STEM FPT Schools mặc định');
                         setTimeout(() => setSaveSuccessMessage(''), 3000);
                       }}
-                      className="px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center gap-2 transition"
+                      className="px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center gap-2 transition cursor-pointer"
                     >
                       <RotateCcw className="w-3.5 h-3.5" /> Dùng tranh STEM FPT mặc định
+                    </button>
+
+                    <button
+                      onClick={handleSaveAll}
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-xs uppercase flex items-center gap-1.5 shadow-md cursor-pointer transition"
+                    >
+                      <Save className="w-4 h-4" /> Lưu & Bắt đầu ván mới với ảnh này
                     </button>
                   </div>
                 </div>
@@ -1551,6 +1632,88 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                 className="px-5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-black uppercase shadow"
               >
                 Tạo bộ câu hỏi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL XÁC NHẬN BẮT ĐẦU VÁN MỚI VỚI BỘ CÂU HỎI VÀ HÌNH ẢNH MỚI */}
+      {showNewGameConfirmModal && (
+        <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md select-none animate-in fade-in duration-200">
+          <div className="w-full max-w-lg bg-slate-900 border-2 border-amber-400/90 rounded-3xl p-6 sm:p-7 shadow-[0_0_50px_rgba(245,158,11,0.3)] flex flex-col space-y-4">
+            <div className="flex items-center gap-3.5 pb-1 border-b border-slate-800">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-400/50 flex items-center justify-center text-emerald-400 shrink-0">
+                <CheckCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-black text-emerald-400 text-base sm:text-lg uppercase tracking-wide">
+                  Cài đặt đã được lưu
+                </h3>
+                <p className="text-xs text-slate-400 font-medium">
+                  Tài khoản giáo viên: <span className="text-slate-200 font-bold">{currentTeacher?.name}</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Khung câu hỏi xác nhận chính xác theo yêu cầu */}
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-500/15 via-slate-950/90 to-cyan-500/15 border-2 border-amber-400/40 text-center">
+              <p className="text-base sm:text-lg font-black text-white leading-relaxed tracking-wide">
+                Bạn muốn bắt đầu ván mới bằng bộ câu hỏi và hình ảnh lắp ghép này chứ?
+              </p>
+              <p className="text-xs text-amber-200/80 mt-1.5 font-medium">
+                Nếu chọn &quot;Để sau&quot;, ván chơi hiện tại được giữ nguyên và cài đặt mới sẽ áp dụng cho ván tiếp theo.
+              </p>
+            </div>
+
+            {/* Chi tiết nội dung sẽ áp dụng */}
+            <div className="p-3.5 rounded-2xl bg-slate-800/70 border border-slate-700/80 flex items-center gap-3.5">
+              <div className="w-20 h-16 rounded-xl overflow-hidden bg-slate-950 border border-cyan-500/40 shrink-0 relative shadow-inner">
+                <img
+                  src={localSettings.puzzleImageUrl}
+                  alt="Tranh ghép"
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 border border-cyan-400/20 pointer-events-none">
+                  {[...Array(9)].map((_, i) => (
+                    <div key={i} className="border border-cyan-400/15" />
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex-1 min-w-0 text-xs space-y-1">
+                <div className="font-bold text-slate-100 truncate flex items-center gap-1.5">
+                  <span className="text-amber-400 font-mono">▶</span>
+                  {currentSet?.name || 'Bộ câu hỏi STEM'}
+                </div>
+                <div className="text-slate-400 text-[11px] flex items-center gap-2">
+                  <span className="text-cyan-300 font-semibold">{currentSet?.questions?.length || 0} câu hỏi</span>
+                  <span>•</span>
+                  <span className="text-amber-300 font-semibold">9 mảnh ghép 3×3</span>
+                </div>
+                <div className="text-[11px] text-slate-400 truncate">
+                  Chu môi: <span className="text-amber-300 font-bold">{localSettings.requiredScores.mouth_pucker || 50}đ</span> • 
+                  Phồng má: <span className="text-amber-300 font-bold">{localSettings.requiredScores.cheek_puff || 50}đ</span> • 
+                  Cười: <span className="text-amber-300 font-bold">{localSettings.requiredScores.smile || 50}đ</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Các nút bấm hành động chuẩn theo Part C */}
+            <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-2">
+              <button
+                onClick={handleSaveWithoutRestart}
+                className="w-full sm:w-auto px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 font-bold text-xs sm:text-sm cursor-pointer transition order-2 sm:order-1"
+                title="Lưu thiết lập nhưng giữ nguyên ván chơi hiện tại"
+              >
+                Để sau
+              </button>
+
+              <button
+                onClick={handleConfirmStartNewGame}
+                className="w-full sm:flex-1 py-3 px-5 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(245,158,11,0.5)] cursor-pointer transition active:scale-98 order-1 sm:order-2"
+              >
+                <Sparkles className="w-4 h-4" /> OK – Bắt đầu ván mới
               </button>
             </div>
           </div>

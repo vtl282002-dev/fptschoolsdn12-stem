@@ -100,4 +100,32 @@ export interface PuzzlePiece {
   left: number;
 }
 
+export interface ActiveGamePiece {
+  id: number; // 0 to 8
+  row: number; // 0, 1, 2
+  col: number; // 0, 1, 2
+  config: PuzzlePiece;
+  gameSessionId: string;
+  imageVersion: string;
+  dataUrl: string; // Direct sliced PNG dataUrl of the piece
+  pathData: string; // SVG path data for border & clipping
+}
+
+export interface ActiveGameConfig {
+  gameSessionId: string;
+  imageVersion: string;
+  puzzleSourceImage: string;
+  puzzleImageNaturalWidth: number;
+  puzzleImageNaturalHeight: number;
+  puzzlePieces: ActiveGamePiece[];
+  questionSet: QuestionSet;
+  requiredScores: Record<ChallengeType, number>;
+  enabledChallenges: Record<ChallengeType, boolean>;
+  countdownDuration: number;
+  schoolName: string;
+  teacherName: string;
+  schoolLogoUrl: string;
+  createdAt: number;
+}
+
 export type GameScreen = 'home' | 'challenge' | 'question' | 'puzzle' | 'victory' | 'settings';

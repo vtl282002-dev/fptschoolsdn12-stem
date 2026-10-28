@@ -1,4 +1,4 @@
-import { PuzzlePiece } from '../types';
+import { PuzzlePiece, ActiveGamePiece } from '../types';
 
 /**
  * Predefined complementary jigsaw tabs for a 3x3 grid:
@@ -102,4 +102,122 @@ export function generateJigsawPath(w: number, h: number, piece: PuzzlePiece): st
 
   path += ` Z`;
   return path;
+}
+
+/**
+  * Computes a deterministic content hash from the image URL/Data URL
+  */
+export function computeImageContentHash(imageUrl: string): string {
+  if (!imageUrl) return 'empty_image';
+  const len = imageUrl.length;
+  let hash = 0;
+  const step = Math.max(1, Math.floor(len / 40));
+  for (let i = 0; i < len; i += step) {
+    hash = ((hash << 5) - hash) + imageUrl.charCodeAt(i);
+    hash |= 0;
+  }
+  return `v_${Math.abs(hash).toString(36)}_${len}`;
+}
+
+/**
+ * Loads, decodes and physically slices the 9 jigsaw puzzle pieces from the source image.
+ * Each piece gets its own clean PNG dataUrl, gameSessionId, and imageVersion.
+ */
+export async function generatePuzzleSessionPieces(
+  sourceImageUrl: string,
+  gameSessionId: string,
+  imageVersion: string
+): Promise<ActiveGamePiece[]> {
+  console.log(`[GameSession] Bắt đầu cắt 9 mảnh ghép cho ván: ${gameSessionId}, phiên bản ảnh: ${imageVersion}`);
+
+  // 1. Tải và giải mã ảnh nguồn
+  const img = new Image();
+  if (!sourceImageUrl.startsWith('data:')) {
+    img.crossOrigin = 'anonymous';
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error('Không thể tải ảnh nguồn để cắt mảnh ghép.'));
+    img.src = sourceImageUrl;
+  });
+
+  if (img.decode) {
+    try {
+      await img.decode();
+    } catch {}
+  }
+
+  const naturalW = img.naturalWidth || 1200;
+  const naturalH = img.naturalHeight || 800;
+
+  // Kích thước chuẩn hóa để cắt mảnh ghép với độ phân giải cao và sắc nét
+  const targetW = 600;
+  const targetH = Math.max(300, Math.round(targetW / (naturalW / naturalH)));
+  const pieceW = targetW / 3;
+  const pieceH = targetH / 3;
+
+  // Vẽ ảnh nguồn lên canvas trung gian
+  const sourceCanvas = document.createElement('canvas');
+  sourceCanvas.width = targetW;
+  sourceCanvas.height = targetH;
+  const sCtx = sourceCanvas.getContext('2d');
+  if (!sCtx) {
+    throw new Error('Canvas 2D context không khả dụng');
+  }
+  sCtx.drawImage(img, 0, 0, targetW, targetH);
+
+  const pieces: ActiveGamePiece[] = [];
+
+  for (const piece of PUZZLE_PIECES_CONFIG) {
+    const miniW = 120; // Độ phân giải render sắc nét cho khay và bàn cờ
+    const miniH = miniW / (pieceW / pieceH);
+    const pathData = generateJigsawPath(miniW, miniH, piece);
+
+    // Bounding box có thêm 25% lề xung quanh cho mấu ghép nhô ra
+    const padX = miniW * 0.25;
+    const padY = miniH * 0.25;
+    const canvasW = Math.ceil(miniW * 1.5);
+    const canvasH = Math.ceil(miniH * 1.5);
+
+    const pieceCanvas = document.createElement('canvas');
+    pieceCanvas.width = canvasW;
+    pieceCanvas.height = canvasH;
+    const pCtx = pieceCanvas.getContext('2d');
+
+    if (pCtx) {
+      pCtx.save();
+      pCtx.translate(padX, padY);
+
+      // Cắt theo đường viền jigsaw chính xác
+      const path2d = new Path2D(pathData);
+      pCtx.clip(path2d);
+
+      // Vẽ đúng phần ảnh của mảnh này từ sourceCanvas
+      pCtx.drawImage(
+        sourceCanvas,
+        -piece.col * miniW,
+        -piece.row * miniH,
+        miniW * 3,
+        miniH * 3
+      );
+      pCtx.restore();
+    }
+
+    const dataUrl = pieceCanvas.toDataURL('image/png');
+
+    pieces.push({
+      id: piece.id,
+      row: piece.row,
+      col: piece.col,
+      config: piece,
+      gameSessionId,
+      imageVersion,
+      dataUrl,
+      pathData
+    });
+  }
+
+  console.log(`[GameSession] Cắt thành công 9 mảnh ghép mới. Phiên bản: ${imageVersion}, GameSessionId: ${gameSessionId}`);
+  return pieces;
 }
