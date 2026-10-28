@@ -43,6 +43,8 @@ export default function App() {
 
   // Puzzle pieces tracking
   const [placedPieceIds, setPlacedPieceIds] = useState<number[]>([]);
+  const placedPieceIdsRef = useRef<number[]>([]);
+  placedPieceIdsRef.current = placedPieceIds;
   const [placementCredits, setPlacementCredits] = useState(0);
   const [shuffledTrayOrder, setShuffledTrayOrder] = useState<number[]>([0, 1, 2, 3, 4, 5, 6, 7, 8]);
   const [challengeTurnNonce, setChallengeTurnNonce] = useState(0);
@@ -105,6 +107,7 @@ export default function App() {
         setActiveQuestionSetId(targetSetId);
 
         // 5. Reset tiến trình ván chơi
+        placedPieceIdsRef.current = [];
         setPlacedPieceIds([]);
         setPlacementCredits(0);
         setShuffledTrayOrder(generateShuffledTray());
@@ -220,6 +223,7 @@ export default function App() {
     audioManager.init();
     audioManager.startBGM();
 
+    placedPieceIdsRef.current = [];
     setPlacedPieceIds([]);
     setPlacementCredits(0);
     setShuffledTrayOrder(generateShuffledTray());
@@ -290,24 +294,25 @@ export default function App() {
   // Piece Placed Successfully
   const handlePlacePieceSuccess = (pieceId: number) => {
     const updatedPlaced = [...placedPieceIds, pieceId];
+    placedPieceIdsRef.current = updatedPlaced;
     setPlacedPieceIds(updatedPlaced);
     setPlacementCredits((prev) => Math.max(0, prev - 1));
 
-    if (updatedPlaced.length === 9) {
-      // 9/9 Completed! Level 4 Celebration
-      setGamePhase('victory');
-    } else {
-      // Show intermediate success popup
-      setShowSuccessPopup(true);
-    }
+    // Show 3-second celebratory countdown popup before transitioning to next challenge
+    setShowSuccessPopup(true);
   };
 
-  // Continue after placement popup
+  // Continue after placement popup (called automatically after 3s or when clicked)
   const handleContinueAfterPopup = () => {
     setShowSuccessPopup(false);
-    pickNextChallenge();
-    setChallengeTurnNonce((n) => n + 1);
-    setGamePhase('challenge');
+    const count = placedPieceIdsRef.current.length;
+    if (count >= 9) {
+      setGamePhase('victory');
+    } else {
+      pickNextChallenge();
+      setChallengeTurnNonce((n) => n + 1);
+      setGamePhase('challenge');
+    }
   };
 
   // Return to challenge from puzzle board
